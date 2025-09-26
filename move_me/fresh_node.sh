@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# FRESH NODE SETUP (NatakMesh) – safer, structured, idempotent-ish
+# ------------------------------------------------------------------------------
+
+set -Eeuo pipefail
+
+
+# -------- Confirmation ---------------------------------------------------------
+read -r -p "This script will prepare your device to be used with NATAK Mesh. Do you want to continue? [Y/N] " ans
+case "$ans" in
+  [Yy]*) echo "Proceeding with setup...";;
+  *) echo "Aborted."; exit 1;;
+esac
+
+# -------- Logging (warnings & errors) -----------------------------------------
+LOG_FILE="/tmp/fresh_node.log"
+: > "$LOG_FILE"   # clear file on start
+# redirect stderr to both console and log
+exec 2> >(tee -a "$LOG_FILE" >&2)
+# -------- Settings -------------------------------------------------------------
+MOVE_SRC="${HOME}/move_me"           # source of files to be copied
+RUN_RESET_ID=false                   # via --reset-id
+DO_REBOOT=false                      # via --do-reboot
+USE_PIPX=true                        # prefer pipx for Python tools
+LOG_TS() { printf '[%s] ' "$(date '+%F %T')"; }
+
+# -------- Helpers --------------------------------------------------------------
+die() { LOG_TS; echo "ERROR: $*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "Command not found: $1"; }
+sudocheck() { [ "$(id -u)" -eq 0 ] || need sudo; }
+confirm() {
+  local prompt="$1"
+  read -r -p "$prompt [y/N] " ans
+  [[ "${ans:-N}" =~ ^[Yy]$ ]]
+}
+
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [--reset-id] [--no-pipx] [--do-reboot] [--dry-run]
+
+  --reset-id    Reset machine-id/SSH keys (for cloned images).
+  --no-pipx     Use pip3 system-wide (less clean).
+  --do-reboot   Perform a reboot at the end.
+  --dry-run     Only show what would be done.
+EOF
+}
+
+DRY_RUN=false
+run() { LOG_TS; echo "+ $*"; $DRY_RUN || eval "$@"; }
+
+# -------- Argparse -------------------------------------------------------------
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --reset-id)   RUN_RESET_ID=true; shift ;;
+    --no-pipx)    USE_PIPX=false; shift ;;
+    --do-reboot)  DO_REBOOT=true; shift ;;
+    --dry-run)    DRY_RUN=true; shift ;;
+    -h|--help)    usage; exit 0 ;;
+    *) die "Unknown option: $1" ;;
+  esac
+done
+
+# -------- Preflight ------------------------------------------------------------
+sudocheck
+need bash
+need tee
+need awk
+need sed
+need grep
+need systemctl || true
+
+LOG_TS; echo "Starting setup …"
+LOG_TS; echo "Options: reset-id=${RUN_RESET_ID}, pipx=${USE_PIPX}, reboot=${DO_REBOOT}, dry-run=${DRY_RUN}"
+
+# -------- Optional: Reset for cloned images -----------------------------------
+if $RUN_RESET_ID; then
+  LOG_TS; echo "Running machine reset for cloned images …"
+  run "rm -rf /home/natak/linux || true"
+  # Reset machine-id & SSH keys carefully
+  run "sudo systemctl stop systemd-networkd || true"
+  run "sudo rm -f /etc/machine-id"
+  run "echo -n > /etc/machine-id"
+  run "sudo systemd-machine-id-setup"
+  run "sudo rm -f /etc/ssh/ssh_host_*"
+  run "sudo dpkg-reconfigure -f noninteractive openssh-server"
+  run "sudo systemctl restart systemd-networkd || true"
+fi
+
+# -------- Packages -------------------------------------------------------------
+LOG_TS; echo "Installing system packages …"
+export DEBIAN_FRONTEND=noninteractive
+run "sudo apt-get update -y"
+run "sudo apt-get install -y hostapd batctl python3 python3-pip pipx aircrack-ng iperf3 ufw network-manager"
+
+# Load batman-adv kernel module & keep it persistent
+run "sudo modprobe -v batman_adv"
+run "echo 'batman_adv' | sudo tee /etc/modules-load.d/batman_adv.conf >/dev/null"
+
+# -------- Python Tools (Reticulum, Nomadnet, Flask) ----------------------------
+LOG_TS; echo "Installing Python tools … (preferring pipx)"
+
+# -------- Cleanup old binaries (rns & nomadnet) --------------------------------
+# Remove old files/symlinks in ~/.local/bin that block pipx from linking correctly
+for b in rncp rnid rnir rnodeconf rnpath rnprobe rnsd rnstatus rnx; do
+  tgt="${HOME}/.local/bin/${b}"
+  if [ -e "$tgt" ]; then
+    if [ -L "$tgt" ]; then
+      if ! readlink -f "$tgt" | grep -q "${HOME}/.local/pipx/venvs/rns/bin/${b}"; then
+        run "rm -f \"$tgt\""
+      fi
+    else
+      run "rm -f \"$tgt\""
+    fi
+  fi
+done
+
+# Nomadnet binary cleanup
+tgt="${HOME}/.local/bin/nomadnet"
+if [ -e "$tgt" ]; then
+  if [ -L "$tgt" ]; then
+    if ! readlink -f "$tgt" | grep -q "${HOME}/.local/pipx/venvs/nomadnet/bin/nomadnet"; then
+      run "rm -f \"$tgt\""
+    fi
+  else
+    run "rm -f \"$tgt\""
+  fi
+fi
+
+if $USE_PIPX; then
+  run "pipx ensurepath"
+
+  # Clean up conflicting user-bin entries for rns and nomadnet so pipx can link its shims
+  CLEAN_BIN_DIR="${HOME}/.local/bin"
+  # rns binaries
+  for b in rncp rnid rnir rnodeconf rnpath rnprobe rnsd rnstatus rnx; do
+    tgt="${CLEAN_BIN_DIR}/${b}"
+    if [ -e "$tgt" ]; then
+      if [ -L "$tgt" ]; then
+        if ! readlink -f "$tgt" | grep -q "${HOME}/.local/pipx/venvs/rns/bin/${b}"; then
+          run "rm -f \"$tgt\""
+        fi
+      else
+        run "rm -f \"$tgt\""
+      fi
+    fi
+  done
+  # nomadnet binary
+  tgt="${CLEAN_BIN_DIR}/nomadnet"
+  if [ -e "$tgt" ]; then
+    if [ -L "$tgt" ]; then
+      if ! readlink -f "$tgt" | grep -q "${HOME}/.local/pipx/venvs/nomadnet/bin/nomadnet"; then
+        run "rm -f \"$tgt\""
+      fi
+    else
+      run "rm -f \"$tgt\""
+    fi
+  fi
+
+  # Reinstall via pipx to ensure proper shims
+  run "pipx uninstall rns || true"
+  run "pipx uninstall nomadnet || true"
+  run "pipx install rns"
+  run "pipx install nomadnet"
+      run "pipx install flask || pipx upgrade flask"
+else
+  run "pip3 install --upgrade --break-system-packages rns nomadnet flask"
+  # fallback: extend PATH for ~/.local/bin
+  run "grep -q 'HOME/.local/bin' ~/.bashrc || echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
+fi
+
+# -------- Services/Daemons -----------------------------------------------------
+LOG_TS; echo "Enabling/configuring services …"
+run "sudo systemctl enable NetworkManager.service"
+run "sudo systemctl unmask hostapd || true"
+
+# Note: consider disabling wpa_supplicant if hostapd should run exclusively in AP mode.
+# This is system-specific — intentionally NOT automated.
+
+# -------- File copies ----------------------------------------------------------
+LOG_TS; echo "Copying configuration files from ${MOVE_SRC} …"
+[ -d "${MOVE_SRC}" ] || die "Source not found: ${MOVE_SRC}"
+
+# User directories
+for d in mesh mesh_monitor .reticulum .nomadnet; do
+  src="${MOVE_SRC}/home/natak/${d}"
+  dst="${HOME}/${d}"
+  if [ -e "$src" ]; then
+    run "cp -R -f -v \"$src\" \"$dst\""
+  else
+    LOG_TS; echo "Skipping: ${src} not found."
+  fi
+done
+# -------- Permissions ----------------------------------------------------------
+LOG_TS; echo "Setting permissions on user directories …"
+for d in mesh mesh_monitor .reticulum .nomadnet; do
+  dst="${HOME}/${d}"
+  if [ -e "$dst" ]; then
+    run "sudo chmod -R 0777 \"$dst\""
+  fi
+done
+
+
+# System directories
+run "sudo install -d /etc/hostapd /etc/modprobe.d /etc/systemd/network /etc/systemd/system /etc/wpa_supplicant"
+
+# Concrete copies (only if present)
+for pair in \
+  "etc/hostapd/*.*:/etc/hostapd" \
+  "etc/modprobe.d/*.*:/etc/modprobe.d" \
+  "etc/systemd/network/*.*:/etc/systemd/network" \
+  "etc/systemd/system/*.*:/etc/systemd/system" \
+  "etc/wpa_supplicant/*.*:/etc/wpa_supplicant"
+do
+  src_glob="${MOVE_SRC}/${pair%%:*}"
+  dst_dir="${pair##*:}"
+  if compgen -G "$src_glob" >/dev/null; then
+    run "sudo cp -f -v $src_glob \"$dst_dir\""
+  else
+    LOG_TS; echo "Skipping: ${src_glob} not found."
+  fi
+done
+
+# -------- User notes -----------------------------------------------------------
+echo
+echo "======================================================================"
+echo "PLEASE REVIEW/ADJUST:"
+echo "  - /etc/hostapd/hostapd.conf              (SSID, channel, country)"
+echo "  - /etc/systemd/network/br0.network       (bridge/IP settings)"
+echo "  - wpa_supplicant vs. hostapd (avoid conflicts)"
+echo "======================================================================"
+echo
+
+
+# -------- Show Log Summary -----------------------------------------------------
+echo
+echo "======================================================================"
+echo " LOG SUMMARY (Warnings & Errors)"
+echo "======================================================================"
+if [ -s "$LOG_FILE" ]; then
+  cat "$LOG_FILE"
+else
+  echo "No warnings or errors were recorded."
+fi
+echo "======================================================================"
+echo
+# -------- Finish/Reboot --------------------------------------------------------
+if $DO_REBOOT; then
+  if $DRY_RUN || confirm "Reboot now?"; then
+    LOG_TS; echo "Rebooting in 5s …"
+    $DRY_RUN || sleep 5
+    run "sudo reboot"
+  else
+    LOG_TS; echo "Reboot skipped."
+  fi
+else
+  LOG_TS; echo "Setup finished – no reboot triggered but requred!"
+fi

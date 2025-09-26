@@ -1,0 +1,75 @@
+#!/bin/bash
+# ==============================================================================
+# FRESH NODE SETUP SCRIPT
+# ==============================================================================
+
+# ******************************************************************************
+# If you are flashing an existing NatakMesh image onto your harware, run the below machine ID reset commands. Otherwise ignore if this is a fresh build
+# Remove leftover kernel build artifacts from image
+rm -rf /home/natak/linux
+
+# Reset machine ID, SSH keys etc
+#sudo rm /etc/machine-id
+#sudo dbus-uuidgen --ensure=/etc/machine-id
+#sudo rm -f /etc/machine-id
+#sudo systemd-machine-id-setup
+#sudo rm /etc/ssh/ssh_host_*
+#sudo dpkg-reconfigure openssh-server
+#sudo systemctl restart systemd-networkd
+# ******************************************************************************
+
+# ------------------------------------------------------------------------------
+# For fresh build install required packages
+sudo apt update && sudo apt install -y hostapd batctl python3 python3-pip pipx aircrack-ng iperf3 ufw
+sudo modprobe -v batman_adv
+
+# Install Reticulum
+pip3 install --break-system-packages rns
+#pipx install rns
+# you need to install and start rns/rnsd at least once, auto start script now will start it and the git tracked config file
+pip3 install nomadnet --break-system-packages
+#pipx install nomadnet
+#install included config after nomandet has run once or manually adjust node name and enable propagation
+
+
+# Install Flask system-wide for systemd services
+sudo pip3 install flask --break-system-packages
+#sudo pipx install flask
+
+
+# Add ~/.local/bin to PATH for pip-installed scripts
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+#pipx ensurepath
+
+# Enable NetworkManager
+sudo systemctl enable NetworkManager
+# system wpa_supplicant may need to be disabled to its not running in parallel with the one you use for wlan1
+# dont forget to unmask and enable hostapd
+sudo systemctl unmask hostapd
+# Change file and folder permissions of user folder (for testing only)
+sleep 2
+echo "Changing user folder permission (for testing only...)"
+sudo chmod -R 0777 ~/
+sleep 2
+# Move some files and directories
+echo "Moving files and directories"
+sudo cp -R -f -v ~/move_me/home/natak/mesh ~/
+sudo cp -R -f -v ~/move_me/home/natak/mesh_monitor ~/
+sudo cp -R -f -v ~/move_me/home/natak/.reticulum ~/
+sudo cp -R -f -v ~/move_me/home/natak/.nomadnet ~/
+sudo cp -f -v ~/move_me/etc/hostapd/*.* /etc/hostapd
+sudo cp -f -v ~/move_me/etc/modprobe.d/*.* /etc/modprobe.d
+# Skip this for now...
+#sudo cp -R -f -v ~/move_me/etc/NetworkManager/conf.d/unmanaged.conf /etc/NetworkManager/conf.d
+sudo cp -f -v ~/move_me/etc/systemd/network/*.* /etc/systemd/network
+sudo cp -f -v ~/move_me/etc/systemd/system/*.* /etc/systemd/system
+sudo cp -f -v ~/move_me/etc/wpa_supplicant/*.* /etc/wpa_supplicant
+sleep 2
+
+echo -e "\e[31mDON'T FORGET TO EDIT FOLLOWING FILES:\e[0m"
+echo "/ect/hostapd/hostapd.conf"
+echo "/etc/systemd/network/br0.network"
+echo -e "\e[32mPi will rebot in 10 seconds, launch the services script afterwards.\e[0m"
+sleep 10
+sudo reboot
+# -------------------------------------------------------------------------------
