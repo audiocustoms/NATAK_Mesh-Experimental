@@ -1,7 +1,12 @@
+# IGNORE INSTALLATION SETUP FOR NOW!
+This is a working repo and subject to change and fail.
+It the installer does not work properly...
+
+
 # Fresh Node Setup (NatakMesh)
 
-This script prepares a new system (e.g. Raspberry Pi / Debian-based) for use as a **NatakMesh node**.  
-It installs required packages, sets up networking and mesh tools, and copies configuration files into place.  
+This script prepares a new system (e.g. Raspberry Pi / Debian-based) for use as a **NatakMesh node**.
+It installs required packages, sets up networking and mesh tools, and copies configuration files into place.
 Optional features allow resetting machine IDs (for cloned images) and triggering a reboot.
 
 ---
@@ -85,7 +90,7 @@ Please review and adjust configuration files as needed:
 
 ## Notes
 
-- Default behavior installs Python tools with **pipx** (isolated, safer).  
-  Use `--no-pipx` only if pipx is unavailable or undesired.  
+- Default behavior installs Python tools with **pipx** (isolated, safer).
+  Use `--no-pipx` only if pipx is unavailable or undesired.
 - Do **not** use `chmod -R 777 ~` (removed for safety).
 - The script is idempotent: running it again should not break the system.
