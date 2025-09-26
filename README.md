@@ -1,6 +1,6 @@
 # IGNORE INSTALLATION SETUP FOR NOW!
 This is a working repo and subject to change and fail.
-It the installer does not work properly...
+The installer does not work properly...
 
 
 # Fresh Node Setup (NatakMesh)
