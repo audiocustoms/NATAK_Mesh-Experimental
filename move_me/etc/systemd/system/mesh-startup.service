@@ -1,22 +1,23 @@
-# This file could likely use some cleanup, some of these paths refer to modules that we're not using anymore
-# but it works right now so dont want to screw with it
-
+# /etc/systemd/system/mesh-startup.service
 [Unit]
-Description=Mesh Network and Monitor
-After=network.target
+Description=Mesh Network and Monitor (startup_sequence.sh wrapper)
+After=local-fs.target systemd-modules-load.service network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# Definierter PATH, damit ip/iw/batctl gefunden wird
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-Environment=HOME=/home/natak
-Environment=USER=natak
-#Environment=PYTHONPATH=/home/natak/meshtastic
+# Falls /home separat gemountet ist
 WorkingDirectory=/home/natak
-ExecStartPre=sleep 5
+# buffer
+ExecStartPre=/bin/sleep 3
 ExecStart=/home/natak/mesh/startup_sequence.sh
-
+# 60s auf Mesh-Join warten
+TimeoutStartSec=180
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

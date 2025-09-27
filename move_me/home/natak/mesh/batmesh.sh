@@ -1,66 +1,71 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# Variables
-MESH_NAME="natak_mesh"
-MESH_CHANNEL=11
+# --- Settings ---
+IF="wlan1"
+MESH_SSID="natak_mesh"
+FREQ=2462           # channel 11 (2.4 GHz)
+REG="US"
+WAIT_PEER=60        # Sekunden, maximal auf sichtbaren Mesh-Peer warten
+BRIDGE_NAME="br0"   # falls vorhanden, wird bat0 hinein gebrückt; sonst ignoriert
 
-# Set interfaces to not be managed by NetworkManager
-nmcli device set eth0 managed no
-nmcli device set wlan1 managed no
-nmcli device set br0 managed no
+ts(){ date +'%F %T'; }
+log(){ echo "[$(ts)] $*"; }
 
-#load batman-adv
-modprobe batman-adv
+log "[prep] Stoppe potenzielle Störer (harmlos, falls nicht aktiv)"
+systemctl stop "wpa_supplicant@${IF}.service" wpa_supplicant.service NetworkManager iwd 2>/dev/null || true
+pkill -f "wpa_supplicant.*-i ${IF}" 2>/dev/null || true
+rm -f "/var/run/wpa_supplicant/${IF}" 2>/dev/null || true
 
-# Configure mesh interface
-ifconfig wlan1 down
-iw reg set "US"
-iw dev wlan1 set type managed
-iw dev wlan1 set 4addr on
-iw dev wlan1 set type mesh
-iw dev wlan1 set meshid $MESH_NAME
-iw dev wlan1 set channel $MESH_CHANNEL
-ifconfig wlan1 up
+log "[mesh] Setze RegDomain=${REG}, Typ=MESH, bringe ${IF} hoch"
+iw reg set "${REG}" || true
+ip link set "${IF}" down 2>/dev/null || true
+iw dev "${IF}" set type mesh
+ip link set "${IF}" up
 
-#increase wlan1 MTU to account for BATMAN-ADV overhead
-sudo ip link set dev wlan1 mtu 1560
+log "[mesh] Trete offenem 802.11s bei: ssid='${MESH_SSID}', freq=${FREQ}"
+# Leaver (idempotent), Join (offen), Forwarding für batman-adv aus
+iw dev "${IF}" mesh leave 2>/dev/null || true
+iw dev "${IF}" mesh join "${MESH_SSID}" freq "${FREQ}"
+iw dev "${IF}" set mesh_param mesh_fwding=0 || true
 
-# Set fragmentation threshold for better reliability at range, test this
-# shrinking packet size reduces tx time of each individual packet, less time for something
-# to get corrupted. but cuts throughput due to all the additional headers
-#iwconfig wlan1 frag 1024
+# MTU etwas größer für batman-adv + 802.11s Overhead
+ip link set "${IF}" mtu 1560 || true
 
-#wpa_supplicant for encryption only
-wpa_supplicant -B -i wlan1 -c /etc/wpa_supplicant/wpa_supplicant-wlan1-encrypt.conf
+log "[batman] Modul laden, bat0 anlegen/hochfahren, ${IF} anbinden"
+modprobe batman-adv 2>/dev/null || true
+ip link add bat0 type batadv 2>/dev/null || true
+ip link set bat0 up
+batctl if add "${IF}" 2>/dev/null || true
+batctl dat 1
+batctl ap_isolation 0
 
-sleep 15
+# Optional: bat0 in br0 hängen, wenn Bridge existiert
+if ip link show "${BRIDGE_NAME}" >/dev/null 2>&1; then
+  log "[bridge] Hänge bat0 in ${BRIDGE_NAME}"
+  ip link set "${BRIDGE_NAME}" up || true
+  ip link set dev bat0 master "${BRIDGE_NAME}" || true
+fi
 
-#disable stock HWMP routing to allow BATMAN-ADV to handle it
-iw dev wlan1 set mesh_param mesh_fwding 0
+# Optional: auf Peer warten (rein informativ)
+log "[wait] Warte bis zu ${WAIT_PEER}s auf einen sichtbaren Mesh-Peer…"
+for i in $(seq "${WAIT_PEER}"); do
+  if iw dev "${IF}" station dump | grep -q "^Station "; then
+    log "[ok] Mindestens ein Mesh-Peer sichtbar"
+    break
+  fi
+  sleep 1
+done
 
-# Further disable HWMP by setting PREQ interval to maximum and path timeout to minimum
-iw dev wlan1 set mesh_param mesh_hwmp_preq_min_interval 65535
-iw dev wlan1 set mesh_param mesh_hwmp_active_path_timeout 1
+# Status-Ausgabe (nicht kritisch)
+log "[status] Interface:"
+iw dev "${IF}" info | egrep -i 'type|channel|addr' || true
+log "[status] Peers:"
+iw dev "${IF}" station dump | sed -n '1,30p' || true
+log "[status] batman-adv Nachbarn/Originators:"
+batctl n || true
+batctl o || true
 
-#BATMAN-ADV setup
-sudo batctl ra BATMAN_V
-sudo ip link add bat0 type batadv
-sudo ip link set dev wlan1 master bat0
-sudo ip link set dev bat0 up
-sudo ip link set dev br0 up
-sudo ip link set dev bat0 master br0
-
-#Stop NetworkManager from controlling bat0 interface
-nmcli device set bat0 managed no
-
-# Set OGM interval to 1000ms for better adaptation to mobility
-batctl it 1000
-
-## Mesh optimizations below depend on services that dont seem to start for 60+ seconds, need to watch dmesg for IGMP querier or something to that effect and adjust this timing.
-# Set hop penalty to favor stronger direct links in poor RF conditions
-#batctl nc 1
-# Enable distributed ARP table to reduce broadcast traffic
-#batctl dat 1
-
-
-systemctl restart systemd-networkd
+log "[done] batmesh.sh erfolgreich abgeschlossen"
+exit 0
