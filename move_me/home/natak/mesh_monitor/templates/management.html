@@ -23,7 +23,7 @@
         .header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: stretch;
             margin-bottom: 24px;
         }
 
@@ -141,21 +141,56 @@
             background-color: #f44336;
             color: white;
         }
+
+        .logo-header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .logo-header img {
+            height: 80px;
+            max-width: 100%;
+            object-fit: contain;
+        }
+
+        @media (max-width: 600px) {
+            .logo-header img {
+                height: 60px;
+            }
+            
+            .header {
+                flex-direction: column;
+                align-items: center;
+                gap: 12px;
+            }
+            
+            .header img {
+                height: 50px !important;
+            }
+            
+            .header > div {
+                flex: none !important;
+            }
+            
+            .header > div:nth-child(1) {
+                order: 2;
+            }
+            
+            .header > div:nth-child(2) {
+                order: 1;
+            }
+            
+            .header > div:nth-child(3) {
+                order: 3;
+            }
+        }
     </style>
     <script>
         // Channel-to-frequency mapping (same as backend)
         const WIFI_CHANNELS = {
             // 2.4 GHz
             1: 2412, 2: 2417, 3: 2422, 4: 2427, 5: 2432, 6: 2437,
-            7: 2442, 8: 2447, 9: 2452, 10: 2457, 11: 2462, 12: 2467, 13: 2472, 14: 2484,
-            
-            // 5 GHz (common channels)
-            36: 5180, 40: 5200, 44: 5220, 48: 5240,
-            52: 5260, 56: 5280, 60: 5300, 64: 5320,
-            100: 5500, 104: 5520, 108: 5540, 112: 5560,
-            116: 5580, 120: 5600, 124: 5620, 128: 5640,
-            132: 5660, 136: 5680, 140: 5700, 144: 5720,
-            149: 5745, 153: 5765, 157: 5785, 161: 5805, 165: 5825
+            7: 2442, 8: 2447, 9: 2452, 10: 2457, 11: 2462, 12: 2467, 13: 2472, 14: 2484
         };
 
         function loadMeshConfig() {
@@ -405,11 +440,14 @@
 </head>
 <body>
     <div class="header">
-        <div>
-            <h1>{{ hostname }}</h1>
+        <div style="display: flex; flex-direction: column; align-items: flex-start; flex: 1;">
+            <h1 style="margin: 0;">{{ hostname }}</h1>
             <div class="local-mac">Local MAC: {{ local_mac }}</div>
         </div>
-        <div class="nav">
+        <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; flex: 1;">
+            <img src="{{ url_for('static', filename='NatakMeshsecondary-overlay.png') }}" alt="NatakMesh Logo" style="height: 80px;">
+        </div>
+        <div class="nav" style="flex: 1; display: flex; justify-content: flex-end;">
             <a href="/">WiFi</a>
             <a href="/management" class="active">Management</a>
         </div>

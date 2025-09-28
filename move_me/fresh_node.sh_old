@@ -20,14 +20,14 @@ rm -rf /home/natak/linux
 
 # ------------------------------------------------------------------------------
 # For fresh build install required packages
-sudo apt update && sudo apt install -y hostapd batctl python3 python3-pip pipx aircrack-ng iperf3 ufw
+sudo apt update && sudo apt install -y hostapd batctl python3 python3-pip aircrack-ng iperf3
 sudo modprobe -v batman_adv
 
 # Install Reticulum
 pip3 install --break-system-packages rns
 #pipx install rns
 # you need to install and start rns/rnsd at least once, auto start script now will start it and the git tracked config file
-pip3 install nomadnet --break-system-packages
+#pip3 install nomadnet --break-system-packages
 #pipx install nomadnet
 #install included config after nomandet has run once or manually adjust node name and enable propagation
 
@@ -47,23 +47,28 @@ sudo systemctl enable NetworkManager
 # dont forget to unmask and enable hostapd
 sudo systemctl unmask hostapd
 # Change file and folder permissions of user folder (for testing only)
-sleep 2
-echo "Changing user folder permission (for testing only...)"
-sudo chmod -R 0777 ~/
+
 sleep 2
 # Move some files and directories
 echo "Moving files and directories"
 sudo cp -R -f -v ~/move_me/home/natak/mesh ~/
 sudo cp -R -f -v ~/move_me/home/natak/mesh_monitor ~/
 sudo cp -R -f -v ~/move_me/home/natak/.reticulum ~/
-sudo cp -R -f -v ~/move_me/home/natak/.nomadnet ~/
 sudo cp -f -v ~/move_me/etc/hostapd/*.* /etc/hostapd
 sudo cp -f -v ~/move_me/etc/modprobe.d/*.* /etc/modprobe.d
-# Skip this for now...
-#sudo cp -R -f -v ~/move_me/etc/NetworkManager/conf.d/unmanaged.conf /etc/NetworkManager/conf.d
 sudo cp -f -v ~/move_me/etc/systemd/network/*.* /etc/systemd/network
 sudo cp -f -v ~/move_me/etc/systemd/system/*.* /etc/systemd/system
 sudo cp -f -v ~/move_me/etc/wpa_supplicant/*.* /etc/wpa_supplicant
+sudo cp -f -v ~/move_me/etc/udev/*.* /etc/udev
+# Skip this for now...
+#sudo cp -R -f -v ~/move_me/etc/NetworkManager/conf.d/unmanaged.conf /etc/NetworkManager/conf.d
+
+sleep 2
+echo "Changing user folder permission (for testing only...)"
+sudo chmod -R 0777 ~/mesh
+sudo chmod -R 0777 ~/mesh_monitor
+sudo chmod -R 0777 ~/.reticulum
+
 sleep 2
 
 echo -e "\e[31mDON'T FORGET TO EDIT FOLLOWING FILES:\e[0m"

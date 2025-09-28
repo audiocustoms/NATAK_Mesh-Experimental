@@ -23,7 +23,7 @@
         .header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: stretch;
             margin-bottom: 24px;
         }
 
@@ -167,6 +167,49 @@
             background-color: #f44336;
             color: white;
         }
+
+        .logo-header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .logo-header img {
+            height: 80px;
+            max-width: 100%;
+            object-fit: contain;
+        }
+
+        @media (max-width: 600px) {
+            .logo-header img {
+                height: 60px;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: center;
+                gap: 12px;
+            }
+
+            .header img {
+                height: 50px !important;
+            }
+
+            .header > div {
+                flex: none !important;
+            }
+
+            .header > div:nth-child(1) {
+                order: 2;
+            }
+
+            .header > div:nth-child(2) {
+                order: 1;
+            }
+
+            .header > div:nth-child(3) {
+                order: 3;
+            }
+        }
     </style>
     <script>
         // Channel-to-frequency mapping (same as backend)
@@ -174,7 +217,7 @@
             // 2.4 GHz
             1: 2412, 2: 2417, 3: 2422, 4: 2427, 5: 2432, 6: 2437,
             7: 2442, 8: 2447, 9: 2452, 10: 2457, 11: 2462, 12: 2467, 13: 2472, 14: 2484,
-            
+
             // 5 GHz (common channels)
             36: 5180, 40: 5200, 44: 5220, 48: 5240,
             52: 5260, 56: 5280, 60: 5300, 64: 5320,
@@ -191,15 +234,15 @@
                     // Update current channel display
                     document.getElementById('current-channel').textContent = data.current_channel;
                     document.getElementById('current-frequency').textContent = data.current_frequency;
-                    
+
                     // Populate channel selector
                     const select = document.getElementById('channel-select');
                     select.innerHTML = '';
-                    
+
                     // Group channels by band
                     const channels_24 = data.available_channels.filter(ch => ch <= 14);
                     const channels_5 = data.available_channels.filter(ch => ch > 14);
-                    
+
                     // Add 2.4GHz channels
                     if (channels_24.length > 0) {
                         const group24 = document.createElement('optgroup');
@@ -213,7 +256,7 @@
                         });
                         select.appendChild(group24);
                     }
-                    
+
                     // Add 5GHz channels
                     if (channels_5.length > 0) {
                         const group5 = document.createElement('optgroup');
@@ -237,23 +280,23 @@
         function changeChannel() {
             const selectedChannel = parseInt(document.getElementById('channel-select').value);
             const currentChannel = parseInt(document.getElementById('current-channel').textContent);
-            
+
             if (selectedChannel === currentChannel) {
                 showStatus('Channel is already set to ' + selectedChannel, 'error');
                 return;
             }
-            
+
             if (!confirm(`Change mesh channel to ${selectedChannel}? This will restart the system and temporarily disconnect all nodes.`)) {
                 return;
             }
-            
+
             // Disable button during operation
             const button = document.getElementById('apply-channel');
             button.disabled = true;
             button.textContent = 'Applying...';
-            
+
             showStatus('Changing channel and rebooting system...', 'info');
-            
+
             fetch('/api/mesh-config', {
                 method: 'POST',
                 headers: {
@@ -274,7 +317,7 @@
             .catch(error => {
                 console.error('Channel change failed:', error);
                 showStatus('Failed to change channel', 'error');
-                
+
                 // Re-enable button
                 button.disabled = false;
                 button.textContent = 'Apply Channel';
@@ -286,7 +329,7 @@
             statusDiv.textContent = message;
             statusDiv.className = `status-message status-${type}`;
             statusDiv.style.display = 'block';
-            
+
             // Auto-hide after 5 seconds for non-error messages
             if (type !== 'error') {
                 setTimeout(() => {
@@ -294,7 +337,7 @@
                 }, 5000);
             }
         }
-        
+
         function updateData() {
             fetch('/api/wifi')
                 .then(response => response.json())
@@ -302,17 +345,17 @@
                     // Update the hostname and local MAC
                     document.querySelector('h1').textContent = data.hostname;
                     document.querySelector('.local-mac').textContent = 'Local MAC: ' + data.local_mac;
-                    
+
                     // Update node status
                     const nodeGrid = document.querySelector('.node-grid');
                     nodeGrid.innerHTML = '';  // Clear current nodes
-                    
+
                     Object.entries(data.node_status).forEach(([mac, node]) => {
                         // Check if node should be greyed out
                         const isInactive = node.last_seen > data.node_timeout;
                         const cardClass = isInactive ? 'node-card inactive' : 'node-card';
                         const statusClass = isInactive ? 'status-inactive' : 'status-active';
-                        
+
                         nodeGrid.innerHTML += `
                             <div class="${cardClass}">
                                 <h3><span class="status-indicator ${statusClass}"></span>${mac}</h3>
@@ -322,7 +365,7 @@
                             </div>
                         `;
                     });
-                    
+
                     // Schedule next update
                     setTimeout(updateData, 1000); // Refresh every 1 second
                 })
@@ -331,7 +374,7 @@
                     setTimeout(updateData, 1000); // Try again
                 });
         }
-        
+
         // Start the update cycle when page loads
         document.addEventListener('DOMContentLoaded', function() {
             updateData();
@@ -341,11 +384,14 @@
 </head>
 <body>
     <div class="header">
-        <div>
-            <h1>{{ hostname }}</h1>
+        <div style="display: flex; flex-direction: column; align-items: flex-start; flex: 1;">
+            <h1 style="margin: 0;">{{ hostname }}</h1>
             <div class="local-mac">Local MAC: {{ local_mac }}</div>
         </div>
-        <div class="nav">
+        <div style="display: flex; justify-content: center; flex: 1;">
+            <img src="{{ url_for('static', filename='NatakMeshsecondary-overlay.png') }}" alt="NatakMesh Logo" style="height: 60px;">
+        </div>
+        <div class="nav" style="flex: 1; display: flex; justify-content: flex-end;">
             <a href="/" class="active">WiFi</a>
             <a href="/management">Management</a>
         </div>
