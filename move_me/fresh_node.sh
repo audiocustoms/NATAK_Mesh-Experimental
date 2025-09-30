@@ -91,7 +91,7 @@ fi
 LOG_TS; echo "Installing system packages …"
 export DEBIAN_FRONTEND=noninteractive
 run "sudo apt-get update -y"
-run "sudo apt-get install -y hostapd batctl python3 python3-pip pipx aircrack-ng iperf3 ufw network-manager"
+run "sudo DEBIAN_FRONTEND=readline apt-get install -q -y hostapd batctl python3 python3-pip pipx aircrack-ng iperf3 ufw network-manager"
 
 # Load batman-adv kernel module & keep it persistent
 run "sudo modprobe -v batman_adv"
