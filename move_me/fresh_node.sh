@@ -7,7 +7,7 @@ set -Eeuo pipefail
 
 
 # -------- Confirmation ---------------------------------------------------------
-read -r -p "This script will prepare your device to be used with NATAK Mesh. Do you want to continue? [Y/N] " ans
+read -r -p "This script will prepare your device to be used with NATAK Mesh. Do you want to continue? [y/N] " ans
 case "$ans" in
   [Yy]*) echo "Proceeding with setup...";;
   *) echo "Aborted."; exit 1;;
@@ -182,42 +182,34 @@ LOG_TS; echo "Copying configuration files from ${MOVE_SRC} …"
 [ -d "${MOVE_SRC}" ] || die "Source not found: ${MOVE_SRC}"
 
 # User directories
+dst="${HOME}/"
 for d in mesh mesh_monitor .reticulum .nomadnet; do
   src="${MOVE_SRC}/home/natak/${d}"
-  dst="${HOME}/${d}"
-  if [ -e "$src" ]; then
-    run "cp -R -f -v \"$src\" \"$dst\""
+  if [ -d "$src" ]; then
+    run "cp -a -v \"$src\" \"$dst\""
   else
     LOG_TS; echo "Skipping: ${src} not found."
   fi
 done
+
 # -------- Permissions ----------------------------------------------------------
 LOG_TS; echo "Setting permissions on user directories …"
 for d in mesh mesh_monitor .reticulum .nomadnet; do
   dst="${HOME}/${d}"
-  if [ -e "$dst" ]; then
-    run "sudo chmod -R 0777 \"$dst\""
+  if [ -d "$dst" ]; then
+    run "find \"$dst\" -type d -exec chmod 0777 {} \\;"
   fi
 done
-
 
 # System directories
 run "sudo install -d /etc/hostapd /etc/modprobe.d /etc/systemd/network /etc/systemd/system /etc/wpa_supplicant"
 
 # Concrete copies (only if present)
-for pair in \
-  "etc/hostapd/*.*:/etc/hostapd" \
-  "etc/modprobe.d/*.*:/etc/modprobe.d" \
-  "etc/systemd/network/*.*:/etc/systemd/network" \
-  "etc/systemd/system/*.*:/etc/systemd/system" \
-  "etc/wpa_supplicant/*.*:/etc/wpa_supplicant"
-do
-  src_glob="${MOVE_SRC}/${pair%%:*}"
-  dst_dir="${pair##*:}"
-  if compgen -G "$src_glob" >/dev/null; then
-    run "sudo cp -f -v $src_glob \"$dst_dir\""
+for name in etc/hostapd etc/modprobe.d etc/systemd/network etc/systemd/system etc/wpa_supplicant; do
+  if test -d "${MOVE_SRC}/${name}"; then
+    run "sudo cp -v ${MOVE_SRC}/${name}/* /${name}/"
   else
-    LOG_TS; echo "Skipping: ${src_glob} not found."
+    LOG_TS; echo "Skipping: ${MOVE_SRC}/${name} not found."
   fi
 done
 
