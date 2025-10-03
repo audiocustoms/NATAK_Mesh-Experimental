@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <title>OrbisMesh - Connections</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <style>
+        /* ====== Reset / Base ====== */
+        *{box-sizing:border-box}
+        a{color:inherit; text-decoration:none}
+
+        .status-indicator{ display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:8px }
+        .status-active{ background:var(--brand) }
+        .status-inactive{ background:var(--danger) }
+        .stats{ font-size:14px; margin:8px 0 }
+
+        /* Grid */
+        .node-grid{
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+            width: 100%;
+            max-width: 100%;
+            margin: 0 auto;
+            box-sizing: border-box;
+        }
+        @media (max-width: 420px){
+            .node-grid{ grid-template-columns: 1fr; }
+        }
+
+        /* Placeholder styles for inline-only view; main visuals are in app.css */
+        .node-card.inactive{ background:#161616; opacity:.55; color:#666 }
+        .host-title.placeholder{ opacity:.85; font-style: italic; }
+        .node-subtitle.mac{ font-style: italic; margin-bottom: 10px; }
+        .hl-orange{ color: var(--accent-orange, #ff9800); font-weight:700; text-shadow: 0 0 6px rgba(255,152,0,0.35); }
+
+        /* Battery bar visuals (mask-from-right; main theme in app.css) */
+        .battery-bar{
+          position: relative;
+          width: 120px;
+          height: 8px;
+          border-radius: 999px;
+          border: 1px solid var(--border);
+          overflow: hidden;
+          background: linear-gradient(90deg, #c62828 0%, #f9a825 50%, var(--brand) 100%);
+        }
+        .battery-mask{
+          position: absolute;
+          inset: 0 0 0 auto;
+          width: calc(100% - var(--pct, 0) * 1%);
+          background: var(--bg-3);
+          transition: width 200ms linear;
+        }
+
+        /* Health list stacked under battery; dots reuse .status-indicator */
+        .svc-list{
+          display:flex;
+          flex-direction:column;
+          align-items:flex-start;
+          gap:6px;
+          margin-top:8px;
+        }
+        .svc-item{
+          display:flex;
+          align-items:center;
+          gap:8px;
+          font-size:12px;
+          color:var(--muted);
+        }
+        .svc-item .status-indicator{ margin-right:2px; filter:none !important; backdrop-filter:none !important; }
+    </style>
+
+    <script>
+        // --- Helpers ---
+        const WIFI_CHANNELS = {}; // kept for future use if you enable channel controls
+
+        function getDbm(node){
+            if (typeof node.signal_dbm === 'number') return node.signal_dbm;
+            if (typeof node.rssi_dbm === 'number') return node.rssi_dbm;
+            if (typeof node.rssi === 'number') return node.rssi;
+            if (typeof node.signal === 'string') {
+                const m = node.signal.match(/-?\\d+(\\.\\d+)?/);
+                if (m) return parseFloat(m[0]);
+            }
+            return NaN;
+        }
+        function dbmToPct(dbm){
+            if (isNaN(dbm)) return null;
+            const min = -95, max = -35;
+            let q = (dbm - min) / (max - min);
+            q = Math.max(0, Math.min(1, q));
+            return Math.round(q * 100);
+        }
+        function fmtDbm(dbm){ return isNaN(dbm) ? '—' : String(Math.round(dbm)); }
+        function n(v){ return (typeof v === 'number' && !Number.isNaN(v)) ? v : null; }
+        function fmtInt(v){ v = n(v); return (v===null)?'—':String(Math.round(v)); }
+        function fmtMbps(v){ v = n(v); return (v===null)?'—':String(v.toFixed(0)); }
+
+        // Sync CSS vars to status indicator colors (if needed elsewhere)
+        function syncStatusDotColors(){
+          const probe = (cls) => {
+            const el = document.createElement('span');
+            el.className = `status-indicator ${cls}`;
+            el.style.position = 'absolute';
+            el.style.left = '-9999px';
+            el.style.pointerEvents = 'none';
+            document.body.appendChild(el);
+            const col = getComputedStyle(el).backgroundColor;
+            el.remove();
+            return col;
+          };
+          const ok  = probe('status-active');
+          const bad = probe('status-inactive');
+          if (ok)  document.documentElement.style.setProperty('--status-ok',  ok);
+          if (bad) document.documentElement.style.setProperty('--status-bad', bad);
+        }
+
+        function updateData(){
+            fetch('/api/wifi?ts=' + Date.now())
+                .then(r=>r.json())
+                .then(data=>{
+                    // Seitentitel
+                    const h1 = document.querySelector('h1');
+                    if (h1) h1.textContent = data.hostname;
+
+                    const entries = Object.entries(data.node_status || {});
+                    const visible = entries.filter(([_, n]) => Number(n.last_seen) <= data.node_timeout).length;
+
+                    const grid = document.querySelector('.node-grid');
+                    grid.innerHTML = '';
+
+                    // ---------- LOCAL CARD (immer ganz oben) ----------
+                    const localMac = data.local?.mac || data.local_mac || '';
+                    const rawHost  = (data.local && data.local.hostname) ? String(data.local.hostname).trim() : '';
+                    const hostText = rawHost ? rawHost : 'Waiting for hostname';
+                    const isPH     = !rawHost;
+
+                    // Battery: only show if a real battery HAT/shield is present
+                    const hasBattery = data.local?.battery_present === true;
+                    const powerSource = data.local?.power_source || 'unknown';
+                    const battPctRaw  = (typeof data.local?.battery_pct === 'number') ? Number(data.local.battery_pct) : null;
+
+                    let barPct = 0, barClass = '', battText = '—';
+                    if (Number.isFinite(battPctRaw)) {
+                        const v = Math.max(0, Math.min(100, battPctRaw));
+                        barPct = v; battText = `${v}%`;
+                    } else if (powerSource === 'external') {
+                        // external power but no battery -> we'll hide block anyway via hasBattery
+                        barPct = 100; battText = 'External Power';
+                    }
+
+                    const health = data.health || {};
+                    const ok = k => health[k] === 'ok';
+
+                    // Battery HTML only if hasBattery
+                    let batteryHtml = '';
+                    if (hasBattery) {
+                      batteryHtml = `
+                        <div class="stats">Battery: <span class="mono">${battText}</span></div>
+                        <div class="signal" title="${battText}">
+                          <div class="battery-bar${barClass}" style="--pct:${barPct}">
+                            <div class="battery-mask"></div>
+                          </div>
+                          <div class="signal-label">${battText}</div>
+                        </div>`;
+                    }
+
+                    grid.insertAdjacentHTML('afterbegin', `
+                      <div class="node-card local">
+                        <h3 class="host-title">Local Node</h3>
+                        <h3 class="host-title ${isPH ? 'placeholder' : ''}">${hostText}</h3>
+                        <div class="node-subtitle mac"><span class="mono">${localMac}</span></div>
+
+                        <div class="stats stats-compact">
+                          Visible Nodes: <span class="mono hl-orange">${visible}</span>
+                        </div>
+
+                        ${batteryHtml}
+
+                        <div class="stats svc-list">
+                          <div class="svc-item">
+                            <span class="status-indicator ${ok('ogm-monitor') ? 'status-active' : 'status-inactive'}"></span>
+                            Mesh Network
+                          </div>
+                          <div class="svc-item">
+                            <span class="status-indicator ${ok('alfred') ? 'status-active' : 'status-inactive'}"></span>
+                            Alfred
+                          </div>
+                          <div class="svc-item">
+                            <span class="status-indicator ${ok('mesh-monitor') ? 'status-active' : 'status-inactive'}"></span>
+                            Flask
+                          </div>
+                        </div>
+                      </div>
+                    `);
+
+                    // ---------- REMOTE NODES (danach) ----------
+                    entries.forEach(([mac, node]) => {
+                        const hostname = (node.hostname && String(node.hostname).trim())
+                          ? node.hostname : 'Waiting for hostname';
+
+                        const inactive = Number(node.last_seen) > data.node_timeout;
+
+                        const dbm = getDbm(node);
+                        const pct = dbmToPct(dbm);
+                        const pctText = (pct===null) ? '—' : (pct + '%');
+
+                        const rx_packets   = node.rx_packets;
+                        const rx_drop_misc = node.rx_drop_misc;
+                        const tx_packets   = node.tx_packets;
+                        const tx_retries   = node.tx_retries;
+                        const tx_failed    = node.tx_failed;
+                        const tx_bitrate   = node.tx_bitrate_mbps;
+                        const rx_bitrate   = node.rx_bitrate_mbps;
+
+                        grid.insertAdjacentHTML('beforeend', `
+                          <div class="node-card ${inactive?'inactive':''}">
+                            <h3>
+                              <span class="status-indicator ${inactive?'status-inactive':'status-active'}"></span>${hostname}
+                            </h3>
+                            <div class="node-subtitle mac"><span class="mono">${mac}</span></div>
+
+                            <div class="stats">Signal: <span class="mono">${fmtDbm(dbm)}</span> dBm</div>
+                            <div class="signal" title="${isNaN(dbm)?'':dbm+' dBm'}">
+                              <div class="signal-bar" style="--pct:${pct ?? 0}">
+                                <div class="signal-mask"></div>
+                              </div>
+                              <div class="signal-label">${pctText}</div>
+                            </div>
+
+                            <div class="stats stats-compact">Last Seen: ${Number(node.last_seen).toFixed(2)}s ago</div>
+                            <div class="stats stats-compact">Batman est.: ${Number(node.throughput).toFixed(1)} Mb/s</div>
+                            <div class="stats stats-compact">Next Hop: ${node.nexthop}</div>
+
+                            <div class="stats grid-rt">
+                              <div>
+                                <div><strong>Local RX</strong></div>
+                                <div>Packets: <span class="mono">${fmtInt(rx_packets)}</span></div>
+                                <div>Drop misc: <span class="mono">${fmtInt(rx_drop_misc)}</span></div>
+                                <div>Bitrate: <span class="mono">${fmtMbps(rx_bitrate)}</span> Mb/s</div>
+                              </div>
+                              <div>
+                                <div><strong>Local TX</strong></div>
+                                <div>Packets: <span class="mono">${fmtInt(tx_packets)}</span></div>
+                                <div>Retries: <span class="mono">${fmtInt(tx_retries)}</span></div>
+                                <div>Failed: <span class="mono">${fmtInt(tx_failed)}</span></div>
+                                <div>Bitrate: <span class="mono">${fmtMbps(tx_bitrate)}</span> Mb/s</div>
+                              </div>
+                            </div>
+                          </div>
+                        `);
+                    });
+
+                    setTimeout(updateData, 1000);
+                })
+                .catch(()=> setTimeout(updateData, 1000));
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            syncStatusDotColors();
+            const sb=document.querySelector('.sidebar'); if (typeof applySidebarState==='function') applySidebarState(sb);
+            updateData(); /* Mesh Live-Daten */
+        });
+    </script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+    {% set active = 'connections' %}
+    {% include 'sidebar.html' %}
+    <!-- ====== Main content ====== -->
+    <main class="main">
+        <div class="header">
+            <div style="display:flex;flex-direction:column;align-items:flex-start;flex:1;">
+                <h1 style="margin:0;">{{ hostname }}</h1>
+            </div>
+        </div>
+        <div class="section">
+            <h2>Connections</h2>
+            <div class="node-grid">
+                {% for mac, node in node_status.items() %}
+                {% set is_inactive = node.last_seen > node_timeout %}
+                <div class="node-card{% if is_inactive %} inactive{% endif %}">
+                    <div class="stats">Waiting for backend to initialize...</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div id="config-status" class="status-message" aria-live="polite"></div>
+    </main>
+</body>
+</html>

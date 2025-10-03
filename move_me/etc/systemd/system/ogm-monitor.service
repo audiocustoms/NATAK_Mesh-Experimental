@@ -1,0 +1,16 @@
+[Unit]
+Description=Enhanced OGM Monitor
+After=mesh-startup.service network-online.target
+Wants=mesh-startup.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/natak/mesh/ogm_monitor
+# warte bis bat0 da ist (max 20s)
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 20); do ip link show bat0 >/dev/null 2>&1 && exit 0; sleep 1; done; echo "bat0 not ready"; exit 1'
+ExecStart=/usr/bin/python3 /home/natak/mesh/ogm_monitor/enhanced_ogm_monitor.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

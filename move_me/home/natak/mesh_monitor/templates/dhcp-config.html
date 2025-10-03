@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>OrbisMesh – DHCP Config</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    .card{background:var(--bg);padding:16px;border-radius:8px}
+    .field{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    input,select{background:var(--bg);color:var(--text);border:1px solid var(--border);padding:8px;border-radius:6px}
+    .btn{background:var(--brand);color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer}
+    .btn.secondary{background:#444}
+    th,td{padding:8px;border-bottom:1px solid var(--border);text-align:left}
+    th{color:#bbb}
+  </style>
+  <script>
+    function showStatus(msg,type,id='dhcp-status'){
+      const el=document.getElementById(id); if(!el) return;
+      el.textContent=msg; el.className='status-message status-'+(type||'success'); el.style.display='block';
+      if(type!=='error') setTimeout(()=>el.style.display='none', 4000);
+    }
+
+    function loadDhcp(){
+  fetch('/api/dhcp-config').then(r=>r.json()).then(d=>{
+    const h1 = document.querySelector('h1');
+    if (h1) h1.textContent = d.hostname || '';
+
+    const lm = document.querySelector('.local-mac');
+    if (lm) lm.textContent = 'Local MAC: ' + (d.local_mac || '');
+
+    document.getElementById('enabled').checked = !!d.enabled;
+    document.getElementById('range-start').value = d.range_start || '10.20.1.100';
+    document.getElementById('range-end').value   = d.range_end   || '10.20.1.200';
+    document.getElementById('lease').value       = d.lease       || '12h';
+  });
+  loadLeases();
+}
+
+    function saveDhcp(){
+      const payload={
+        enabled: document.getElementById('enabled').checked,
+        range_start: document.getElementById('range-start').value.trim(),
+        range_end: document.getElementById('range-end').value.trim(),
+        lease: document.getElementById('lease').value.trim()
+      };
+      fetch('/api/dhcp-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+        .then(r=>r.json()).then(d=>{
+          showStatus(d.success?(d.message||'DHCP gespeichert'):(d.error||'Fehler'), d.success?'success':'error');
+        }).catch(()=>showStatus('Fehler beim Speichern','error'));
+    }
+
+    function restartDnsmasq(){
+      if(!confirm('dnsmasq neustarten?')) return;
+      fetch('/api/service',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({service:'dnsmasq'})})
+      .then(r=>r.json()).then(d=>{
+        showStatus(d.success?(d.message||'dnsmasq neu gestartet'):(d.error||'Fehler'), d.success?'success':'error');
+      }).catch(()=>showStatus('Fehler beim Neustart','error'));
+    }
+
+    function loadLeases(){
+      fetch('/api/dhcp-leases').then(r=>r.json()).then(d=>{
+        const tbody=document.querySelector('#leases tbody'); tbody.innerHTML='';
+        (d.leases||[]).forEach(l=>{
+          const tr=document.createElement('tr');
+          tr.innerHTML = `<td>${l.ip}</td><td>${l.mac}</td><td>${l.hostname||''}</td><td>${l.expires||''}</td>`;
+          tbody.appendChild(tr);
+        });
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', loadDhcp);
+  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  {% set active='dhcp-config' %}
+  {% include 'sidebar.html' %}
+  <main class="main">
+    <div class="header">
+      <div style="display:flex;flex-direction:column;align-items:flex-start;flex:1;">
+        <h1 style="margin:0;">{{ hostname }}</h1>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>DHCP Settings</h2>
+      <div class="grid">
+        <div class="card">
+          <div class="field">
+            <label for="enabled">Aktiv:</label>
+            <input id="enabled" type="checkbox" />
+          </div>
+          <div class="field">
+            <label for="range-start">Range Start:</label>
+            <input id="range-start" type="text" placeholder="10.20.1.100" />
+          </div>
+          <div class="field">
+            <label for="range-end">Range Ende:</label>
+            <input id="range-end" type="text" placeholder="10.20.1.200" />
+          </div>
+          <div class="field">
+            <label for="lease">Lease:</label>
+            <input id="lease" type="text" placeholder="12h" />
+            <button class="btn" onclick="saveDhcp()">Speichern</button>
+            <button class="btn secondary" onclick="restartDnsmasq()">dnsmasq Neustart</button>
+          </div>
+          <div id="dhcp-status" class="status-message"></div>
+        </div>
+
+        <div class="card">
+          <h3>Aktive Leases</h3>
+          <table id="leases">
+            <thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>Gültig bis</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

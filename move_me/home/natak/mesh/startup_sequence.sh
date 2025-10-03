@@ -53,8 +53,8 @@ echo "[$(ts)] start rnsd (as user natak)"
 nohup runuser -l natak -c 'rnsd' >> /var/log/rnsd.log 2>&1 &
 
 # 6) Start enhanced OGM monitor in background
-cd /home/natak/mesh/ogm_monitor && python3 enhanced_ogm_monitor.py &
-OGM_PID=$!
+#cd /home/natak/mesh/ogm_monitor && python3 enhanced_ogm_monitor.py &
+#OGM_PID=$!
 
 echo "[$(ts)] Startup: done"
 exit 0

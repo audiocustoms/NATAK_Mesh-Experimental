@@ -1,2 +1,0 @@
-# /etc/udev/rules.d/90-mesh-wlan.rules
-ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan1", RUN+="/usr/bin/systemd-run --no-block /home/natak/mesh/startup_sequence.sh"

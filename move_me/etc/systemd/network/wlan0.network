@@ -3,3 +3,5 @@ Name=wlan0
 
 [Network]
 Bridge=br0
+LinkLocalAddressing=no
+DHCP=no

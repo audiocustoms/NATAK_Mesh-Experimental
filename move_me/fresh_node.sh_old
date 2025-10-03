@@ -59,7 +59,7 @@ sudo cp -f -v ~/move_me/etc/modprobe.d/*.* /etc/modprobe.d
 sudo cp -f -v ~/move_me/etc/systemd/network/*.* /etc/systemd/network
 sudo cp -f -v ~/move_me/etc/systemd/system/*.* /etc/systemd/system
 sudo cp -f -v ~/move_me/etc/wpa_supplicant/*.* /etc/wpa_supplicant
-sudo cp -f -v ~/move_me/etc/udev/*.* /etc/udev
+sudo cp -f -v ~/move_me/etc/udev/rules.d/90-mesh-wlan.rules /etc/udev/rules.d/90-mesh-wlan.rules
 # Skip this for now...
 #sudo cp -R -f -v ~/move_me/etc/NetworkManager/conf.d/unmanaged.conf /etc/NetworkManager/conf.d
 

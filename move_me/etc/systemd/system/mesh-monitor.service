@@ -14,10 +14,10 @@ Environment=HOME=/home/natak
 Environment=USER=natak
 #Environment=PYTHONPATH=/home/natak/meshtastic
 WorkingDirectory=/home/natak/mesh_monitor
-ExecStartPre=sleep 15
+ExecStartPre=sleep 10
 ExecStart=/home/natak/mesh_monitor/start_monitor.sh
 Restart=always
-RestartSec=10
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target

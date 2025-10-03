@@ -1,0 +1,3 @@
+natak ALL=(root) NOPASSWD:/bin/systemctl restart dnsmasq, \
+/bin/systemctl restart reticulum, \
+/bin/systemctl restart systemd-networkd

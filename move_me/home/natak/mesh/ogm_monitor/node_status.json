@@ -1,0 +1,11 @@
+{
+  "timestamp": 1759496094,
+  "local": {
+    "mac": "fe:11:72:85:9e:88",
+    "alfred_ok": true,
+    "hostname": "pi01",
+    "battery_present": false,
+    "power_source": "unknown"
+  },
+  "nodes": {}
+}
