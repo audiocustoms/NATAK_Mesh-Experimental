@@ -213,16 +213,41 @@ for name in etc/hostapd etc/modprobe.d etc/systemd/network etc/systemd/system et
   fi
 done
 
-# -------- User notes -----------------------------------------------------------
-echo
-echo "======================================================================"
-echo "PLEASE REVIEW/ADJUST:"
-echo "  - /etc/hostapd/hostapd.conf              (SSID, channel, country)"
-echo "  - /etc/systemd/network/br0.network       (bridge/IP settings)"
-echo "  - wpa_supplicant vs. hostapd (avoid conflicts)"
-echo "======================================================================"
-echo
+# -------- Update values --------------------------------------------------------
 
+sudo="sudo "
+
+function replace
+{
+	old=$1
+	name=$2
+	file=$3
+
+	echo -n "$name: [${old}]: "
+	read new
+	if [ "$new" != "" ] ; then
+		clean=${new//\//\\\/}
+		${sudo}sed -e "s/${old}/${clean}/" -i $file
+	fi
+}
+
+root=""
+line="$(grep '^ssid=' ${root}/etc/hostapd/hostapd.conf)"
+ssid=${line#ssid=}
+replace "$ssid" "SSID" "${root}/etc/hostapd/hostapd.conf"
+
+line="$(grep '^wpa_passphrase=' ${root}/etc/hostapd/hostapd.conf)"
+wpa_pass=${line#wpa_passphrase=}
+replace "$wpa_pass" "WPA pass phrase" "${root}/etc/hostapd/hostapd.conf"
+
+line="$(grep '^Address=' ${root}/etc/systemd/network/br0.network)"
+line=${line#Address=}
+ip_addr=${line%/24}
+replace "$ip_addr" "IP address" "${root}/etc/systemd/network/br0.network"
+
+line="$(grep '^DNS=' ${root}/etc/systemd/network/br0.network)"
+dns=${line#DNS=}
+replace "$dns" "DNS" "${root}/etc/systemd/network/br0.network"
 
 # -------- Show Log Summary -----------------------------------------------------
 echo
