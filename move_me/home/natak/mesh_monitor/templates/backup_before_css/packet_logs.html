@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Reticulum Packet Logs</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    :root{
+      --background-color:#1a1a1a;
+      --text-color:#ffffff;
+      --card-background:#2d2d2d;
+      --udp-color:#4a9eff;
+      --atak-to-lora-color:#4caf50;
+      --lora-to-atak-color:#ff9800;
+      --received-color:#e040fb;
+      --delivered-color:#00bcd4;
+      --complete-color:#8bc34a;
+      --retry-color:#fdd835;
+      --default-color:#ffffff;
+    }
+
+    /* Basierend auf packet_logs_old.html – überschreibt kein Body-Flex/Layout */
+    body{
+      font-family:monospace;
+      margin:0;
+      background-color:var(--background-color);
+      color:var(--text-color);
+      height:100vh;
+    }
+
+    a{
+      color:inherit;
+      text-decoration:none;
+      margin-bottom:4px;
+      display:inline-block;
+    }
+    a:hover{ text-decoration:underline; }
+
+    .header{ flex:0 0 auto; }
+
+    .logs{
+      flex:1 1 auto;
+      margin-top:1px;
+      font-family:monospace;
+      white-space:pre-line;
+      overflow-y:auto;
+      height:calc(100vh - 25px);
+      background:var(--card-background);
+      padding:0;
+      border-radius:4px;
+      display:flex;
+      flex-direction:column;
+      gap:0;
+    }
+
+    .log-line{ margin:0; padding:0; font-size:14px; line-height:1; display:block; }
+    .log-time{ color:#888; margin-right:8px; }
+
+    .msg-udp{ color:var(--udp-color); }
+    .msg-atak-to-lora{ color:var(--atak-to-lora-color); }
+    .msg-lora-to-atak{ color:var(--lora-to-atak-color); }
+    .msg-received{ color:var(--received-color); }
+    .msg-delivered{ color:var(--delivered-color); }
+    .msg-complete{ color:var(--complete-color); }
+    .msg-retry{ color:var(--retry-color); }
+    .msg-default{ color:var(--default-color); }
+  </style>
+
+  <script>
+    let lastLogCount = 0;
+
+    function updateLogs(){
+      fetch('/api/packet-logs')
+        .then(r => r.json())
+        .then(data => {
+          // Hostname in der Kopfzeile
+          const hostEl = document.querySelector('small');
+          if(hostEl) hostEl.textContent = data.hostname || '';
+
+          const logsContainer = document.querySelector('.logs');
+          const atBottom = Math.abs(logsContainer.scrollHeight - logsContainer.clientHeight - logsContainer.scrollTop) < 50;
+
+          if((data.logs || []).length !== lastLogCount){
+            logsContainer.innerHTML = '';
+            (data.logs || []).forEach(log => {
+              logsContainer.innerHTML += `
+                <div class="log-line">
+                  <span class="log-time">[${log.time}]</span>
+                  <span class="msg-${log.type}">${log.message}</span>
+                </div>
+              `;
+            });
+            lastLogCount = (data.logs || []).length;
+
+            if(atBottom){
+              logsContainer.scrollTop = logsContainer.scrollHeight;
+            }
+          }
+
+          setTimeout(updateLogs, 2000);
+        })
+        .catch(() => setTimeout(updateLogs, 2000));
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const logs = document.querySelector('.logs');
+      logs.scrollTop = logs.scrollHeight;
+      updateLogs();
+    });
+  </script>
+</head>
+<body>
+  {% set active = 'status' %} {# oder eigener Menüpunkt, falls gewünscht #}
+  {% include 'sidebar.html' %}
+
+  <main class="main">
+    <div class="header">
+      <div style="display:flex;flex-direction:column;align-items:flex-start;flex:1;">
+        <h1 style="margin:0;">{{ hostname }}</h1>
+        <a href="/" style="margin:0 0 0 8px;font-size:24px;padding:8px;display:flex;align-items:center;justify-content:center">←</a>
+      </div>
+    </div>
+
+    <div class="logs">
+      {% for log in logs %}
+      <div class="log-line">
+        <span class="log-time">[{{ log.time }}]</span>
+        <span class="msg-{{ log.type }}">{{ log.message }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </main>
+</body>
+</html>

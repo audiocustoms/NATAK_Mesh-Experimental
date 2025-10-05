@@ -4,7 +4,6 @@
 Name=br0
 
 [Network]
-Address=192.168.200.10/24
+Address=192.168.200.20/24
+IPMasquerade=ipv4
 ConfigureWithoutCarrier=yes
-IPMasquerade=yes
-

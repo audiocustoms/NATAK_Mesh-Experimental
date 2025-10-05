@@ -15,7 +15,6 @@ Installation:
   /bin/systemctl restart reticulum, \
   /bin/systemctl restart systemd-networkd' | sudo tee /etc/sudoers.d/mesh-monitor
 - sudo chmod 440 /etc/sudoers.d/mesh-monitor
--sudo tail -f /var/lib/misc/dnsmasq.leases
 
 - sudo systemctl daemon-reload
 - sudo systemctl enable --now dnsmasq

@@ -133,7 +133,7 @@
                     // ---------- LOCAL CARD (immer ganz oben) ----------
                     const localMac = data.local?.mac || data.local_mac || '';
                     const rawHost  = (data.local && data.local.hostname) ? String(data.local.hostname).trim() : '';
-                    const hostText = rawHost ? rawHost : 'Waiting for hostname';
+                    const hostText = rawHost ? rawHost : 'Waiting for hostname...';
                     const isPH     = !rawHost;
 
                     // Battery: only show if a real battery HAT/shield is present
@@ -181,11 +181,11 @@
                         <div class="stats svc-list">
                           <div class="svc-item">
                             <span class="status-indicator ${ok('ogm-monitor') ? 'status-active' : 'status-inactive'}"></span>
-                            Mesh Network
+                            Orbis Mesh
                           </div>
                           <div class="svc-item">
                             <span class="status-indicator ${ok('alfred') ? 'status-active' : 'status-inactive'}"></span>
-                            Alfred
+                            ALFRED
                           </div>
                           <div class="svc-item">
                             <span class="status-indicator ${ok('mesh-monitor') ? 'status-active' : 'status-inactive'}"></span>
@@ -198,7 +198,7 @@
                     // ---------- REMOTE NODES (danach) ----------
                     entries.forEach(([mac, node]) => {
                         const hostname = (node.hostname && String(node.hostname).trim())
-                          ? node.hostname : 'Waiting for hostname';
+                          ? node.hostname : 'Waiting for hostname...';
 
                         const inactive = Number(node.last_seen) > data.node_timeout;
 

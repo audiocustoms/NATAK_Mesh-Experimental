@@ -1,9 +1,8 @@
 {
-  "timestamp": 1759496094,
+  "timestamp": 1759641890,
   "local": {
-    "mac": "fe:11:72:85:9e:88",
-    "alfred_ok": true,
-    "hostname": "pi01",
+    "mac": "6e:01:9b:1f:b8:44",
+    "alfred_ok": false,
     "battery_present": false,
     "power_source": "unknown"
   },

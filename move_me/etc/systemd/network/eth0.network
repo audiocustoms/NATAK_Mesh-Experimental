@@ -3,5 +3,5 @@ Name=eth0
 
 [Network]
 Bridge=br0
-LinkLocalAddressing=no
 DHCP=no
+LinkLocalAddressing=no

@@ -36,15 +36,14 @@ def read_node_status():
         return {}
 
 def get_current_channel():
+    """Read current channel from batmesh.sh"""
     try:
-        out = subprocess.run(['iw','dev','wlan1','info'],
-                             capture_output=True, text=True).stdout
-        m = re.search(r'channel\s+(\d+)', out)
-        if m:
-            return int(m.group(1))
-    except Exception:
-        pass
-    return 11
+        with open('/home/natak/mesh/batmesh.sh', 'r') as f:
+            for line in f:
+                if line.startswith('MESH_CHANNEL='):
+                    return int(line.split('=')[1].strip())
+    except:
+        return 11  # default
 
 def update_batmesh_channel(new_channel):
     """Update channel in batmesh.sh using sed"""
