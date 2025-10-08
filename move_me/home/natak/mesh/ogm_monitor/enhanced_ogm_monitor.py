@@ -129,13 +129,14 @@ class EnhancedOGMMonitor:
                 if current_mac is None:
                     continue
 
-                # Signal (prefer 'signal', fallback 'signal avg')
-                m = re.search(r"\bsignal:\s*(-?\d+(?:\.\d+)?)\s*dBm\b", line, re.IGNORECASE)
+                # Signal (prefer 'signal', fallback 'signal avg') – erlaube optionales [..]
+                m = re.search(r"\bsignal:\s*(-?\d+(?:\.\d+)?)\s*(?:\[[^\]]+\])?\s*dBm\b", line, re.IGNORECASE)
                 if m:
                     block["signal_dbm"] = float(m.group(1))
-                m = re.search(r"\bsignal\s+avg:\s*(-?\d+(?:\.\d+)?)\s*dBm\b", line, re.IGNORECASE)
+                m = re.search(r"\bsignal\s+avg:\s*(-?\d+(?:\.\d+)?)\s*(?:\[[^\]]+\])?\s*dBm\b", line, re.IGNORECASE)
                 if m and "signal_dbm" not in block:
                     block["signal_dbm"] = float(m.group(1))
+
 
                 # Counters
                 m = re.search(r"\brx\s+packets:\s*(\d+)\b", line, re.IGNORECASE)

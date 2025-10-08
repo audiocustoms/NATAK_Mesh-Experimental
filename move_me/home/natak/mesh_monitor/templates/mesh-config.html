@@ -5,220 +5,298 @@
   <title>OrbisMesh – Mesh Config</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+  <!-- 1) STYLE -->
   <style>
+    /* Basis, an connections.html angelehnt – nutzt Variablen aus app.css */
+    *{ box-sizing:border-box }
 
-    /* Reset / Base */
-    *{box-sizing:border-box}
-    a{color:inherit;text-decoration:none}
+    /* Layout wird aus app.css übernommen (body, header, section, etc.) */
 
-    /* Main area (wie connections.html) */
-    .logo-header img,.header img{height:60px;object-fit:contain}
+    .content{ display:grid; gap:16px }
 
-    /* Controls für Mesh-Channel & IP */
-    .config-controls{display:flex;flex-direction:column;gap:16px}
-    .current-config{font-size:16px;padding:8px;background:var(--bg);border-radius:4px}
-    .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-    select,input{background:var(--bg);color:var(--text);border:1px solid var(--border);padding:8px;border-radius:4px}
-    button{background:var(--brand);color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer}
-    button:hover{filter:brightness(.95)}
-    button:disabled{background:#666;cursor:not-allowed}
+    /* === Grids in der Section – gleiche Farbe wie in connections.html === */
+    .grid{
+      background:var(--bg-3);   /* dunkleres Panel wie in connections.html */
+      
+      border-radius:12px;       /* interne Panels leicht kleiner gerundet */
+      padding:14px;
+    }
+    .grid + .grid{ margin-top:12px; }
 
+    /* Typo & Form – app.css liefert die Basis, hier nur Ergänzungen falls nötig */
+    .host-title{ margin:0 0 8px 0; font-size:18px; font-weight:700 }
+    .stats{ font-size:14px; margin:8px 0 }
+    .mono{ font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+    .muted{ color:var(--muted) }
+    .form-row{ margin:12px 0 }
+    .form-row label{ display:block; font-size:13px; color:var(--muted); margin-bottom:6px }
+    .row{ display:flex; margin-top:8px; gap:8px; align-items:center; flex-wrap:wrap }
+
+    .input,.select{
+      background:#111; color:#fff; border:1px solid var(--border);
+      border-radius:10px; padding:8px 10px; min-width:240px; outline:none;
+    }
+    .input:focus,.select:focus{ border-color:#666 }
+
+    .status-message{ margin-top:10px; font-size:14px }
+    .status-message.good{ color:#8bc34a }
+    .status-message.bad{ color:#ef5350 }
+    
+
+    @media (max-width: 720px){
+      .main{ padding:16px 12px 24px 12px }
+    }
   </style>
 
+  <!-- 2) SCRIPT -->
   <script>
-    // Channel-to-frequency mapping (2.4 GHz – entspricht Backend)
-    const WIFI_CHANNELS = {1:2412,2:2417,3:2422,4:2427,5:2432,6:2437,7:2442,8:2447,9:2452,10:2457,11:2462,12:2467,13:2472,14:2484};
+    // ==== Fallback-Mapping wie in der alten Seite: Kanal -> Frequenz (MHz) ====
+    const WIFI_CHANNELS = {
+      1:2412, 2:2417, 3:2422, 4:2427, 5:2432, 6:2437, 7:2442,
+      8:2447, 9:2452, 10:2457, 11:2462, 12:2467, 13:2472, 14:2484
+    };
 
-    function showStatus(message, type='info', id='config-status'){
-      const el=document.getElementById(id); if(!el) return;
-      el.textContent=message; el.className=`status-message status-${type}`; el.style.display='block';
-      if(type!=='error'){ setTimeout(()=>{ el.style.display='none'; }, 5000); }
-    }
+    // Utils
+    const qs  = s => document.querySelector(s);
+    const put = (el, txt) => { if (el) el.textContent = txt; };
+    const show = (msg, ok=true) => {
+      const box = qs('#status');
+      if (!box) return;
+      box.textContent = msg || '';
+      box.classList.remove('good','bad');
+      box.classList.add(ok ? 'good' : 'bad');
+    };
 
-    /* ===== Wi-Fi Mesh Channel ===== */
-    function loadMeshConfig(){
-      fetch('/api/mesh-config')
-        .then(r=>r.json())
-        .then(data=>{
-          // Aktuelle Werte
-          const chEl=document.getElementById('current-channel');
-          const frEl=document.getElementById('current-frequency');
-          if(chEl) chEl.textContent = data.current_channel;
-          if(frEl) frEl.textContent = data.current_frequency;
+    // Initial laden (SSID & Channels)
+    async function loadInitial() {
+      try {
+        // SSID
+        try {
+          const r = await fetch('/api/wifi-ssid', { cache:'no-store' });
+          if (r.ok) {
+            const { ssid } = await r.json();
+            put(qs('#current-ssid'), ssid || '—');
+          }
+        } catch {}
 
-          // Dropdown füllen
-          const select=document.getElementById('channel-select');
-          if(!select) return;
-          select.innerHTML='';
+        // Channels (bestehender Endpoint) + Frequency
+        const rc = await fetch('/api/mesh-config', { cache:'no-store' });
+        if (rc.ok) {
+          const data = await rc.json();
+          const cur  = data.current_channel;
+          const fq   = data.current_frequency;
+          put(qs('#current-channel'),   cur!=null ? String(cur) : '—');
+          put(qs('#current-frequency'), fq!=null  ? String(fq)  : '—');
 
-          const ch24 = (data.available_channels||[]).filter(c=>c<=14);
-          const ch5  = (data.available_channels||[]).filter(c=>c>14);
+          const sel = qs('#channel-select');
+          sel.innerHTML = '';
 
-          if(ch24.length){
-            const g=document.createElement('optgroup'); g.label='2.4 GHz';
-            ch24.forEach(c=>{
-              const o=document.createElement('option');
-              const mhz=WIFI_CHANNELS[c]||'';
-              o.value=c; o.textContent=`Channel ${c}${mhz?` (${mhz} MHz)`:''}`;
-              if(c===data.current_channel) o.selected=true;
-              g.appendChild(o);
+          // Fall A: Backend liefert Map { ch: freq } -> "ch (freq MHz)"
+          if (data.available_channels && !Array.isArray(data.available_channels)) {
+            Object.entries(data.available_channels).forEach(([ch, freq]) => {
+              const opt = document.createElement('option');
+              opt.value = ch;
+              opt.textContent = `${ch} (${freq} MHz)`;
+              if (Number(ch) === Number(cur)) opt.selected = true;
+              sel.appendChild(opt);
             });
-            select.appendChild(g);
-          }
-          if(ch5.length){
-            const g=document.createElement('optgroup'); g.label='5 GHz';
-            ch5.forEach(c=>{
-              const o=document.createElement('option');
-              o.value=c; o.textContent=`Channel ${c}`; // Frequenz unbekannt -> ohne MHz anzeigen
-              if(c===data.current_channel) o.selected=true;
-              g.appendChild(o);
+          } else {
+            // Fall B: Backend liefert Liste -> Mapping verwenden wie in der alten Datei
+            (data.available_channels || []).forEach(ch => {
+              const freq = WIFI_CHANNELS[ch];
+              const opt = document.createElement('option');
+              opt.value = ch;
+              opt.textContent = freq ? `${ch} (${freq} MHz)` : String(ch);
+              if (Number(ch) === Number(cur)) opt.selected = true;
+              sel.appendChild(opt);
             });
-            select.appendChild(g);
           }
-        })
-        .catch(()=>showStatus('Failed to load current configuration','error'));
+        }
+      } catch {
+        show('Fehler beim Laden initialer Werte', false);
+      }
     }
 
-    function changeChannel(){
-      const select=document.getElementById('channel-select');
-      const btn=document.getElementById('apply-channel');
-      const selected=parseInt(select.value,10);
-      const current=parseInt(document.getElementById('current-channel').textContent,10);
-
-      if(selected===current) return showStatus('Channel is already set to '+selected,'error');
-
-      if(!confirm(`Change mesh channel to ${selected}? This will restart the system and temporarily disconnect all nodes.`)) return;
-
-      btn.disabled=true; btn.textContent='Applying...';
-      showStatus('Changing channel...','info');
-
-      fetch('/api/mesh-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({channel:selected})})
-        .then(r=>r.json())
-        .then(d=>{
-          if(d.success){
-            showStatus(d.message||'Channel changed. Reboot required.','success');
-            document.getElementById('current-channel').textContent = d.channel;
-            document.getElementById('current-frequency').textContent = d.frequency;
-          }else{
-            showStatus(d.error||'Failed to change channel','error');
-            btn.disabled=false; btn.textContent='Apply Channel';
-          }
-        })
-        .catch(()=>{ showStatus('Failed to change channel','error'); btn.disabled=false; btn.textContent='Apply Channel'; });
+    // Actions
+    async function applySsid() {
+      const val = qs('#ssid-input').value.trim();
+      if (!val) { show('Bitte SSID eingeben', false); return; }
+      try {
+        const r = await fetch('/api/wifi-ssid', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ ssid: val })
+        });
+        if (!r.ok) throw 0;
+        put(qs('#current-ssid'), val);
+        show('SSID gesetzt. Bitte Dienst neu starten.');
+      } catch {
+        show('Konnte SSID nicht setzen', false);
+      }
     }
 
-    /* ===== Node IP Configuration ===== */
-    function loadNodeIp(){
-      fetch('/api/node-ip')
-        .then(r=>r.json())
-        .then(d=>{
-          const ip=(d&&d.current_ip)||'';
-          const cur=document.getElementById('current-ip');
-          const inp=document.getElementById('ip-input');
-          if(cur) cur.textContent=ip;
-          if(inp){ inp.placeholder=ip; }
-        })
-        .catch(()=>showStatus('Failed to load current IP configuration','error','ip-status'));
+    async function applyPsk() {
+      const val = qs('#psk-input').value;
+      if (!val) { show('Bitte Passwort eingeben', false); return; }
+      try {
+        const r = await fetch('/api/wifi-psk', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ psk: val })
+        });
+        if (!r.ok) throw 0;
+        qs('#psk-input').value = '';
+        show('Passwort gesetzt. Bitte Dienst neu starten.');
+      } catch {
+        show('Konnte Passwort nicht setzen', false);
+      }
     }
 
-    function changeIp(){
-      const inp=document.getElementById('ip-input');
-      const btn=document.getElementById('apply-ip');
-      const cur=document.getElementById('current-ip').textContent.trim();
-      const newIp=(inp.value||'').trim();
+    // Channel setzen – alter then()-Flow mit Channel+Frequency-Update
+    function applyChannel(){
+      const select = document.getElementById('channel-select');
+      const btn    = document.getElementById('apply-channel');
+      const selected = Number(select.value);
 
-      const ipRegex=/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
-      if(!ipRegex.test(newIp)) return showStatus('Invalid IP format. Use: xxx.xxx.xxx.xxx','error','ip-status');
+      if (!Number.isFinite(selected)) {
+        show('Bitte Kanal wählen', false);
+        return;
+      }
 
-      const oct=newIp.split('.').map(n=>parseInt(n,10));
-      if(oct.some(n=>isNaN(n)||n<0||n>255)) return showStatus('IP octets must be 0–255','error','ip-status');
+      btn.disabled = true;
+      btn.textContent = 'Applying…';
 
-      if(newIp===cur) return showStatus('IP is already set to '+newIp,'error','ip-status');
-
-      if(!confirm(`Change node IP address?\n\nCurrent IP: ${cur}\nNew IP: ${newIp}`)) return;
-
-      btn.disabled=true; btn.textContent='Applying...';
-      showStatus('Changing IP address...','info','ip-status');
-
-      fetch('/api/node-ip',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ip:newIp})})
-        .then(r=>r.json())
-        .then(d=>{
-          if(d.success){
-            showStatus(d.message||'IP updated.','success','ip-status');
-            document.getElementById('current-ip').textContent=d.ip;
-            inp.value=''; inp.placeholder=d.ip;
-          }else{
-            showStatus(d.error||'Failed to change IP','error','ip-status');
-          }
-          btn.disabled=false; btn.textContent='Apply IP';
-        })
-        .catch(()=>{ showStatus('Failed to change IP address','error','ip-status'); btn.disabled=false; btn.textContent='Apply IP'; });
+      fetch('/api/mesh-config', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ channel: selected })
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          show(d.message || 'Channel changed. Reboot required.', true);
+          document.getElementById('current-channel').textContent   = d.channel;
+          document.getElementById('current-frequency').textContent = d.frequency;
+        } else {
+          show(d.error || 'Failed to change channel', false);
+        }
+      })
+      .catch(() => {
+        show('Failed to change channel', false);
+      })
+      .finally(() => {
+        btn.disabled = false;
+        btn.textContent = 'Apply Channel';
+      });
     }
 
-    document.addEventListener('DOMContentLoaded', ()=>{
-      // Sidebar-State (falls Funktion im Include definiert ist)
-      if(typeof applySidebarState==='function'){ const sb=document.querySelector('.sidebar'); applySidebarState(sb); }
-      loadMeshConfig();
-      loadNodeIp();
+    async function restartNetworking() {
+      try {
+        const r = await fetch('/api/restart-service', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ name:'networking' })
+        });
+        if (!r.ok) throw 0;
+        show('networking neu gestartet.');
+      } catch {
+        show('Neustart networking fehlgeschlagen', false);
+      }
+    }
+
+    // Bindings
+    window.addEventListener('DOMContentLoaded', () => {
+      loadInitial();
+      qs('#apply-ssid')   ?.addEventListener('click', applySsid);
+      qs('#apply-psk')    ?.addEventListener('click', applyPsk);
+      qs('#apply-channel')?.addEventListener('click', applyChannel);
+      qs('#restart-net')  ?.addEventListener('click', restartNetworking);
     });
   </script>
+
+  <!-- 3) APP.CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
+
 <body>
   {% set active = 'mesh-config' %}
   {% include 'sidebar.html' %}
 
+  <!-- Body HTML mit div-Klassen wie in connections.html -->
   <main class="main">
+    <!-- Header wie in deiner alten mesh-config -->
     <div class="header">
       <div style="display:flex;flex-direction:column;align-items:flex-start;flex:1;">
         <h1 style="margin:0;">{{ hostname }}</h1>
       </div>
     </div>
 
-    <!-- Wi-Fi Mesh Channel -->
-    <div class="section">
-      <h2>Wi-Fi Mesh Channel</h2>
-      <div class="config-controls">
-        <div class="current-config">
-          <strong>Current Channel:</strong>
-          <span id="current-channel">{{ current_channel }}</span>
-          (<span id="current-frequency">{{ current_frequency }}</span> MHz)
+    <div class="content">
+      <!-- SECTION (statt node-card) -->
+      <div class="section">
+        <h3 class="host-title">OrbisMesh Configuration</h3>
+
+        <!-- GRID 1: SSID / Passwort -->
+        <div class="grid">
+          <!-- Current SSID -->
+          <div class="stats">
+            <strong>Current SSID:</strong> <span id="current-ssid" class="mono hl-orange">—</span>
+          </div>
+
+          <!-- Change SSID -->
+          <div class="form-row">
+            <label for="ssid-input">Change SSID</label>
+            <div class="row">
+              <input id="ssid-input" class="input" type="text" placeholder="New SSID (8-32 characters)" />
+            </div>
+            <!-- Button eine Zeile darunter -->
+            <div class="row">
+              <button id="apply-ssid" class="btn-ghost" type="button">Apply SSID</button>
+            </div>
+          </div>
+
+          <!-- Change SSID Password -->
+          <div class="form-row">
+            <label for="psk-input">Change SSID Password</label>
+            <div class="row">
+              <input id="psk-input" class="input" type="password" placeholder="New Password" />
+            </div>
+            <!-- Button eine Zeile darunter -->
+            <div class="row">
+              <button id="apply-psk" class="btn-ghost" type="button">Apply Password</button>
+            </div>
+          </div>
         </div>
 
-        <div class="row">
-          <label for="channel-select">Change Channel:</label>
-          <select id="channel-select"></select>
-          <button id="apply-channel" onclick="changeChannel()">Apply Channel</button>
+        <!-- GRID 2: Channel + Frequency -->
+        <div class="grid">
+          <!-- Current Channel -->
+          <div class="stats">
+            <strong>Current Orbis Mesh Channel:</strong>
+                <span id="current-channel" class="mono hl-orange">{{ current_channel }}</span>
+                (<span id="current-frequency">{{ current_frequency }}</span> MHz)
+          </div>
+
+          <!-- Select Channel -->
+          <div class="form-row">
+            <label for="channel-select">Select Channel</label>
+            <div class="row">
+              <select id="channel-select" class="select"></select>
+            </div>
+            <!-- Button eine Zeile darunter -->
+            <div class="row">
+              <button id="apply-channel" class="btn-ghost" type="button">Apply Channel</button>
+            </div>
+          </div>
         </div>
 
-        <div class="disclaimer" style="font-size:14px;color:#ff9800;margin-top:8px;">
-          Note: Node must be rebooted for channel changes to take effect.
+        <!-- GRID 3: Restart -->
+        <div class="grid">
+          <div class="form-row">
+            <div class="row">
+              <!-- Rot-Button kommt aus app.css (.btn-danger) -->
+              <button id="restart-net" class="btn-danger" type="button">Reboot Network</button>
+            </div>
+          </div>
+          <div id="status" class="status-message" aria-live="polite"></div>
         </div>
-
-        <div id="config-status" class="status-message" aria-live="polite"></div>
-      </div>
-    </div>
-
-    <!-- Node IP Configuration -->
-    <div class="section">
-      <h2>Node IP Configuration</h2>
-      <div class="config-controls">
-        <div class="current-config">
-          <strong>Current IP:</strong> <span id="current-ip">{{ current_ip }}</span>
-        </div>
-
-        <div class="row">
-          <label for="ip-input">Change IP:</label>
-          <input id="ip-input" type="text" inputmode="decimal" placeholder="{{ current_ip }}"
-                 pattern="^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$" />
-          <button id="apply-ip" onclick="changeIp()">Apply IP</button>
-        </div>
-
-        <div class="disclaimer" style="font-size:14px;color:#ff9800;margin-top:8px;">
-          Note: Node must be rebooted for IP changes to take effect.
-        </div>
-
-        <div id="ip-status" class="status-message" aria-live="polite"></div>
       </div>
     </div>
   </main>

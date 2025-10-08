@@ -2,80 +2,115 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <title>OrbisMesh – DHCP Config</title>
+  <title>OrbisMesh – DHCP / Network Insights</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Typo- und Layout-Feinschliff lokal; Farben & Basis-Styles kommen aus app.css -->
   <style>
-    .card{background:var(--bg);padding:16px;border-radius:8px}
-    .field{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-    input,select{background:var(--bg);color:var(--text);border:1px solid var(--border);padding:8px;border-radius:6px}
-    .btn{background:var(--brand);color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer}
-    .btn.secondary{background:#444}
-    th,td{padding:8px;border-bottom:1px solid var(--border);text-align:left}
-    th{color:#bbb}
+    :root { --fs14: 14px; }
+    .grid { display:grid; gap:12px; }
+    .grid.kpis { grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); }
+    .card { background: var(--bg-3); padding:16px; border-radius:8px; }
+    .kpi { display:flex; flex-direction:column; gap:6px; }
+    .kpi .label { font-size: var(--fs14); }
+    .kpi .value { font-size: var(--fs14); font-weight:600; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding:8px; border-bottom:1px solid var(--border); text-align:left; font-size: var(--fs14); }
+    th { color:#bbb; font-weight:600; }
+    .small { font-size: var(--fs14); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace; }
+    .muted { color:#888; }
   </style>
+
   <script>
-    function showStatus(msg,type,id='dhcp-status'){
-      const el=document.getElementById(id); if(!el) return;
-      el.textContent=msg; el.className='status-message status-'+(type||'success'); el.style.display='block';
-      if(type!=='error') setTimeout(()=>el.style.display='none', 4000);
-    }
+    const $ = sel => document.querySelector(sel);
+    const setText = (id, val) => { const el = $(id); if (el) el.textContent = (val ?? '—'); };
+    const fmt = (v, fb='—') => (v===null || v===undefined || v==='') ? fb : v;
 
-    function loadDhcp(){
-  fetch('/api/dhcp-config').then(r=>r.json()).then(d=>{
-    const h1 = document.querySelector('h1');
-    if (h1) h1.textContent = d.hostname || '';
-
-    const lm = document.querySelector('.local-mac');
-    if (lm) lm.textContent = 'Local MAC: ' + (d.local_mac || '');
-
-    document.getElementById('enabled').checked = !!d.enabled;
-    document.getElementById('range-start').value = d.range_start || '10.20.1.100';
-    document.getElementById('range-end').value   = d.range_end   || '10.20.1.200';
-    document.getElementById('lease').value       = d.lease       || '12h';
-  });
-  loadLeases();
-}
-
-    function saveDhcp(){
-      const payload={
-        enabled: document.getElementById('enabled').checked,
-        range_start: document.getElementById('range-start').value.trim(),
-        range_end: document.getElementById('range-end').value.trim(),
-        lease: document.getElementById('lease').value.trim()
-      };
-      fetch('/api/dhcp-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
-        .then(r=>r.json()).then(d=>{
-          showStatus(d.success?(d.message||'DHCP gespeichert'):(d.error||'Fehler'), d.success?'success':'error');
-        }).catch(()=>showStatus('Fehler beim Speichern','error'));
-    }
-
-    function restartDnsmasq(){
-      if(!confirm('dnsmasq neustarten?')) return;
-      fetch('/api/service',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({service:'dnsmasq'})})
-      .then(r=>r.json()).then(d=>{
-        showStatus(d.success?(d.message||'dnsmasq neu gestartet'):(d.error||'Fehler'), d.success?'success':'error');
-      }).catch(()=>showStatus('Fehler beim Neustart','error'));
-    }
-
-    function loadLeases(){
-      fetch('/api/dhcp-leases').then(r=>r.json()).then(d=>{
-        const tbody=document.querySelector('#leases tbody'); tbody.innerHTML='';
-        (d.leases||[]).forEach(l=>{
-          const tr=document.createElement('tr');
-          tr.innerHTML = `<td>${l.ip}</td><td>${l.mac}</td><td>${l.hostname||''}</td><td>${l.expires||''}</td>`;
-          tbody.appendChild(tr);
-        });
+    // Tabelle füllen (nur aktive Leases zeigen, geliefert als d.active_leases oder Fallback d.leases)
+    function renderLeases(leases){
+      const tbody = $('#tbl-clients tbody');
+      tbody.innerHTML = '';
+      (leases||[]).forEach(l=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="mono">${fmt(l.mac)}</td>
+          <td class="value hl-orange">${fmt(l.ip)}</td>
+          <td>${fmt(l.hostname)}</td>
+          <td class="mono">${fmt(l.expires)}</td>
+        `;
+        tbody.appendChild(tr);
       });
     }
 
-    document.addEventListener('DOMContentLoaded', loadDhcp);
+    // Bridge & Netzwerkstatus (einmalig beim Laden)
+    function renderNetworkStatus(nw){
+      const br = nw?.bridge || {};
+      const br0 = br.br0 || {};
+      const bat0 = br.bat0 || {};
+      setText('#kpi-bridge', `br0: ${br0.state || '—'} | bat0: ${bat0.state || '—'}`);
+
+      const members = []
+        .concat((br0.members||[]).map(m=>`br0:${m}`))
+        .concat((bat0.members||[]).map(m=>`bat0:${m}`));
+      setText('#kpi-bridge-members', members.length ? members.join(', ') : '—');
+
+      setText('#kpi-subnet',  nw?.routes?.subnet  || '—');
+      setText('#kpi-gateway', nw?.routes?.gateway || '—');
+    }
+
+    async function loadLeases(){
+      try{
+        const r = await fetch('/api/dhcp-leases');
+        const d = await r.json();
+        const leasesToShow = d.active_leases || d.leases || [];
+        renderLeases(leasesToShow);
+        setText('#kpi-clients', d.active_clients ?? leasesToShow.length);
+      } catch(e){ /* silent */ }
+    }
+
+    async function loadNetworkStatusOnce(){
+      try{
+        const r = await fetch('/api/network-status');
+        const d = await r.json();
+        renderNetworkStatus(d);
+      } catch(e){ /* silent */ }
+    }
+
+    async function renderActiveLeases(){
+  const r = await fetch('/api/dhcp-leases?ts=' + Date.now());
+  const data = await r.json(); // erwartet [{ip,mac,host}]
+  const tb = document.querySelector('#active-table tbody');
+  tb.innerHTML = '';
+  for (const it of (data || [])) {
+    const tr = document.createElement('tr');
+    const info = [
+      it.ip ? `<div>${it.ip}</div>` : '',
+      it.mac ? `<div class="muted">${it.mac}</div>` : '',
+      it.host ? `<div>${it.host}</div>` : ''
+    ].join('');
+    tr.innerHTML = `<td>${info}</td>`;
+    tb.appendChild(tr);
+  }
+  if (!tb.children.length) {
+    tb.innerHTML = '<tr><td class="muted">Keine aktiven Clients</td></tr>';
+  }
+}
+
+    // Initial: Netzstatus einmal, Leases sofort; danach nur Tabelle alle 5s
+    document.addEventListener('DOMContentLoaded', () => {
+      loadNetworkStatusOnce();
+      loadLeases();
+      setInterval(loadLeases, 5000);
+    });
   </script>
+
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
 <body>
   {% set active='dhcp-config' %}
   {% include 'sidebar.html' %}
-  <main class="main">
+
+  <main class="main" style="font-size: var(--fs14);">
     <div class="header">
       <div style="display:flex;flex-direction:column;align-items:flex-start;flex:1;">
         <h1 style="margin:0;">{{ hostname }}</h1>
@@ -83,37 +118,36 @@
     </div>
 
     <div class="section">
-      <h2>DHCP Settings</h2>
-      <div class="grid">
-        <div class="card">
-          <div class="field">
-            <label for="enabled">Aktiv:</label>
-            <input id="enabled" type="checkbox" />
-          </div>
-          <div class="field">
-            <label for="range-start">Range Start:</label>
-            <input id="range-start" type="text" placeholder="10.20.1.100" />
-          </div>
-          <div class="field">
-            <label for="range-end">Range Ende:</label>
-            <input id="range-end" type="text" placeholder="10.20.1.200" />
-          </div>
-          <div class="field">
-            <label for="lease">Lease:</label>
-            <input id="lease" type="text" placeholder="12h" />
-            <button class="btn" onclick="saveDhcp()">Speichern</button>
-            <button class="btn secondary" onclick="restartDnsmasq()">dnsmasq Neustart</button>
-          </div>
-          <div id="dhcp-status" class="status-message"></div>
+      <!-- KPIs -->
+      <div class="grid kpis" style="margin-bottom:12px;">
+        <div class="card kpi">
+          <div class="label">Clients (DHCP)</div>
+          <!-- ORANGE via app.css: .hl-orange -->
+          <div class="value hl-orange" id="kpi-clients">—</div>
         </div>
+        <div class="card kpi">
+          <div class="label">Subnet / Gateway</div>
+          <div class="value hl-orange" id="kpi-subnet">—</div>
+          <div class="value hl-orange" id="kpi-gateway">—</div>
+        </div>
+        <div class="card kpi">
+          <div class="label">Bridge Status</div>
+          <div class="value hl-orange" id="kpi-bridge">br0: — | bat0: —</div>
+          <div class="muted small" id="kpi-bridge-members">—</div>
+        </div>
+      </div>
 
-        <div class="card">
-          <h3>Aktive Leases</h3>
-          <table id="leases">
-            <thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>Gültig bis</th></tr></thead>
-            <tbody></tbody>
-          </table>
+      <!-- Clients Table -->
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <div class="label">Clients</div>
         </div>
+        <table id="active-table">
+          <thead>
+            <tr><th>Clients (IP / MAC / Hostname)</th></tr>
+          </thead>
+          <tbody><tr><td class="muted">Lade …</td></tr></tbody>
+        </table>
       </div>
     </div>
   </main>

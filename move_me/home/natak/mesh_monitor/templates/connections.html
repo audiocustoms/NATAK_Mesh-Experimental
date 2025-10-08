@@ -16,15 +16,7 @@
         .stats{ font-size:14px; margin:8px 0 }
 
         /* Grid */
-        .node-grid{
-            display: grid;
-            gap: 12px;
-            grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-            width: 100%;
-            max-width: 100%;
-            margin: 0 auto;
-            box-sizing: border-box;
-        }
+        
         @media (max-width: 420px){
             .node-grid{ grid-template-columns: 1fr; }
         }
@@ -33,7 +25,7 @@
         .node-card.inactive{ background:#161616; opacity:.55; color:#666 }
         .host-title.placeholder{ opacity:.85; font-style: italic; }
         .node-subtitle.mac{ font-style: italic; margin-bottom: 10px; }
-        .hl-orange{ color: var(--accent-orange, #ff9800); font-weight:700; text-shadow: 0 0 6px rgba(255,152,0,0.35); }
+        
 
         /* Battery bar visuals (mask-from-right; main theme in app.css) */
         .battery-bar{
@@ -169,12 +161,12 @@
                     grid.insertAdjacentHTML('afterbegin', `
                       <div class="node-card local">
                         <h3 class="host-title">Local Node</h3>
-                        <h3 class="host-title ${isPH ? 'placeholder' : ''}">${hostText}</h3>
-                        <div class="node-subtitle mac"><span class="mono">${localMac}</span></div>
-
-                        <div class="stats stats-compact">
+                        <h3 class="host-title ${isPH ? 'placeholder' : ''}"><span class="mono hl-orange">${localMac}</span></h3>
+<div class="stats stats-compact">
                           Visible Nodes: <span class="mono hl-orange">${visible}</span>
                         </div>
+
+                        
 
                         ${batteryHtml}
 
@@ -217,11 +209,9 @@
                         grid.insertAdjacentHTML('beforeend', `
                           <div class="node-card ${inactive?'inactive':''}">
                             <h3>
-                              <span class="status-indicator ${inactive?'status-inactive':'status-active'}"></span>${hostname}
+                              <span class="status-indicator ${inactive?'status-inactive':'status-active'}"></span> <span class="mono hl-orange">${mac}</span>
                             </h3>
-                            <div class="node-subtitle mac"><span class="mono">${mac}</span></div>
-
-                            <div class="stats">Signal: <span class="mono">${fmtDbm(dbm)}</span> dBm</div>
+<div class="stats">Signal: <span class="mono">${fmtDbm(dbm)}</span> dBm</div>
                             <div class="signal" title="${isNaN(dbm)?'':dbm+' dBm'}">
                               <div class="signal-bar" style="--pct:${pct ?? 0}">
                                 <div class="signal-mask"></div>

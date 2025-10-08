@@ -244,11 +244,14 @@ fi
 LOG_TS; echo "Installing system packages …"
 export DEBIAN_FRONTEND=noninteractive
 run "sudo apt-get update -y"
-run "sudo DEBIAN_FRONTEND=readline apt-get install -q -y hostapd batctl python3 python3-pip pipx aircrack-ng iperf3 ufw network-manager"
+run "sudo DEBIAN_FRONTEND=readline apt-get install -q -y hostapd batctl python3 python3-pip pipx aircrack-ng iperf3 ufw network-manager alfred dnsmasq"
 
 # Load batman-adv kernel module & keep it persistent
 run "sudo modprobe -v batman_adv"
 run "echo 'batman_adv' | sudo tee /etc/modules-load.d/batman_adv.conf >/dev/null"
+
+# Bind alfred to batman-adv
+run "sudo alfred -i bat0 -b"
 
 # -------- Python Tools (Reticulum, Nomadnet, Flask) ----------------------------
 LOG_TS; echo "Installing Python tools … (preferring pipx)"
@@ -312,7 +315,7 @@ if $USE_PIPX; then
 
   # Reinstall via pipx to ensure proper shims
   run "pipx uninstall rns || true"
-  run "pipx uninstall nomadnet || true"
+  #run "pipx uninstall nomadnet || true"
   run "pipx install rns"
   run "pipx install nomadnet"
       run "pipx install flask || pipx upgrade flask"
@@ -321,14 +324,6 @@ else
   # fallback: extend PATH for ~/.local/bin
   run "grep -q 'HOME/.local/bin' ~/.bashrc || echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
 fi
-
-# -------- Services/Daemons -----------------------------------------------------
-LOG_TS; echo "Enabling/configuring services …"
-run "sudo systemctl enable NetworkManager.service"
-run "sudo systemctl unmask hostapd || true"
-
-# Note: consider disabling wpa_supplicant if hostapd should run exclusively in AP mode.
-# This is system-specific — intentionally NOT automated.
 
 # -------- File copies ----------------------------------------------------------
 LOG_TS; echo "Copying configuration files from ${MOVE_SRC} …"
@@ -345,6 +340,9 @@ for d in mesh mesh_monitor .reticulum .nomadnet; do
   fi
 done
 
+# Note: consider disabling wpa_supplicant if hostapd should run exclusively in AP mode.
+# This is system-specific — intentionally NOT automated.
+
 # -------- Permissions ----------------------------------------------------------
 LOG_TS; echo "Setting permissions on user directories …"
 for d in mesh mesh_monitor .reticulum .nomadnet; do
@@ -355,16 +353,25 @@ for d in mesh mesh_monitor .reticulum .nomadnet; do
 done
 
 # System directories
-run "sudo install -d /etc/hostapd /etc/modprobe.d /etc/systemd/network /etc/systemd/system /etc/wpa_supplicant"
+run "sudo install -d /etc/hostapd /etc/modprobe.d /etc/systemd/network /etc/systemd/system /etc/wpa_supplicant /etc/sudoers.d /etc/dnsmasq.d /etc/sysctl.d"
 
 # Concrete copies (only if present)
-for name in etc/hostapd etc/modprobe.d etc/systemd/network etc/systemd/system etc/wpa_supplicant; do
+for name in etc/hostapd etc/modprobe.d etc/systemd/network etc/systemd/system etc/wpa_supplicant /etc/sudoers.d /etc/dnsmasq.d /etc/sysctl.d; do
   if test -d "${MOVE_SRC}/${name}"; then
     run "sudo cp -v ${MOVE_SRC}/${name}/* /${name}/"
   else
     LOG_TS; echo "Skipping: ${MOVE_SRC}/${name} not found."
   fi
 done
+
+# -------- Services/Daemons -----------------------------------------------------
+LOG_TS; echo "Enabling/configuring services …"
+run "sudo systemctl enable NetworkManager.service"
+run "sudo systemctl enable dnsmasq"
+run "sudo systemctl enable alfred.service"
+run "sudo systemctl enable alfred-hostname.timer"
+run "sudo systemctl enable ogm-monitor.service"
+run "sudo systemctl unmask hostapd || true"
 
 # -------- Update values --------------------------------------------------------
 

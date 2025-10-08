@@ -1,9 +1,37 @@
 from flask import Flask, render_template, jsonify, request
 import socket, subprocess, json, os, time, sys, platform, shutil, re
-import flask 
+import flask
+from pathlib import Path
+from datetime import datetime
+
+NEIGH_ACTIVE = {"REACHABLE", "DELAY", "PROBE"}  # optional: add "STALE" with a time window
+
+def get_reticulum_version():
+    # 1) Versuch: offizielles RNS-Paket
+    try:
+        import RNS
+        return getattr(RNS, "__version__", "unbekannt")
+    except Exception:
+        pass
+    # 2) Versuch: alternativer Modulname "reticulum"
+    try:
+        import reticulum as _ret
+        return getattr(_ret, "__version__", "unbekannt")
+    except Exception:
+        pass
+    # 3) Versuch: CLI-Tools (falls installiert)
+    for cmd in (["rnsd", "--version"], ["rnsh", "--version"], ["reticulum", "--version"]):
+        try:
+            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True).strip()
+            # nimm die erste Zeile/Version, falls mehr kommt
+            return out.splitlines()[0]
+        except Exception:
+            pass
+    return "unbekannt"
 
 APP_VERSION = "1.0"
 ALLOWED_SERVICES = {"dnsmasq", "reticulum", "networking"}
+from typing import Final
 
 app = Flask(__name__)
 
@@ -13,6 +41,8 @@ WIFI_CHANNELS = {
     1: 2412, 2: 2417, 3: 2422, 4: 2427, 5: 2432, 6: 2437,
     7: 2442, 8: 2447, 9: 2452, 10: 2457, 11: 2462, 12: 2467, 13: 2472, 14: 2484
 }
+WPA_WLAN1_CONF = Path("/etc/wpa_supplicant/wpa_supplicant-wlan1-encrypt.conf")
+BATMESH_SH     = Path("/home/natak/mesh/batmesh.sh")
 
 # Configuration
 NODE_TIMEOUT = 30  # Seconds - nodes not seen within this time will be greyed out
@@ -25,6 +55,67 @@ def get_local_mac():
         return result.stdout.strip() if result.returncode == 0 else "unknown"
     except:
         return "unknown"
+
+def _first_line(txt: str) -> str:
+    return (txt or "").strip().splitlines()[0] if txt else ""
+
+def _parse_version(s: str) -> str:
+    # Versuch 1: "alfred 2024.2" => greife die Zahl mit evtl. Suffix
+    m = re.search(r"\balfred\b[^0-9]*([0-9][0-9A-Za-z\.\-\+_]*)", s, re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    # Versuch 2: allgemein: erste plausible Versionsnummer
+    m = re.search(r"\b[0-9]+(?:\.[0-9A-Za-z\-\+_]+)+\b", s)
+    return m.group(0) if m else ""
+
+def _try_cmd(cmd) -> str:
+    try:
+        out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True, timeout=2)
+        ver = _parse_version(out) or _parse_version(_first_line(out))
+        return ver or _first_line(out)
+    except Exception:
+        return ""
+
+def get_alfred_version() -> str:
+    # Kandidaten-Pfade (PATH + typische Orte)
+    candidates = [shutil.which("alfred"), "/usr/sbin/alfred", "/usr/bin/alfred", "/sbin/alfred", "/bin/alfred"]
+    candidates = [p for p in candidates if p]
+
+    # Typische Versions-Flags ausprobieren
+    flags = [["-v"], ["-V"], ["--version"], ["-h"]]
+
+    for exe in candidates:
+        for fl in flags:
+            ver = _try_cmd([exe, *fl])
+            if ver:
+                return ver
+
+    # Falls Binary nicht erreichbar: versuche Paketmanager
+    for cmd in (
+        ["dpkg-query", "-W", "-f=${Version}\n", "alfred"],                        # Debian/Ubuntu
+        ["apk", "info", "-v", "alfred"],                                          # Alpine
+        ["opkg", "info", "alfred"],                                               # OpenWrt
+        ["pacman", "-Qi", "alfred"],                                              # Arch
+        ["rpm", "-q", "alfred", "--qf", "%{VERSION}\n"],                          # RHEL/Fedora
+    ):
+        ver = _try_cmd(cmd)
+        if ver:
+            v = _parse_version(ver) or _first_line(ver)
+            if v:
+                return v
+
+    return "unbekannt"
+
+def get_batman_version():
+    try:
+        out = subprocess.check_output(["batctl", "-v"], stderr=subprocess.STDOUT).decode()
+        # Beispielausgabe: "batctl 2023.4 [batman-adv: 2023.4]"
+        for part in out.split():
+            if part.startswith("batman-adv:"):
+                return part.split(":")[1].strip("[] ")
+        return out.strip()
+    except Exception:
+        return "unbekannt"
 
 def read_node_status():
     try:
@@ -211,7 +302,13 @@ def gather_node_info():
         'hostname': socket.gethostname(),
         'local_mac': get_local_mac(),
         'os': os_name, 'kernel': kernel, 'uptime': up,
-        'load': load, 'memory': mem, 'disk': disk, 'ipv4': ips
+        'load': load, 'memory': mem, 'disk': disk, 'ipv4': ips,
+        'app_version': APP_VERSION,
+        'flask_version': flask.__version__,
+        'python_version': sys.version.split()[0],
+        'reticulum_version': get_reticulum_version(),
+        'batman_version': get_batman_version(),
+        'alfred_version': get_alfred_version(),
     }
 
 def read_full_status():
@@ -241,6 +338,59 @@ def _svc_state(name: str) -> str:
             pass
     return "bad"
 
+def get_current_ssid():
+    try:
+        with open(WPA_WLAN1_CONF, "r") as f:
+            for ln in f:
+                ln = ln.strip()
+                if ln.lower().startswith("ssid="):
+                    return ln.split("=",1)[1].strip().strip('"').strip("'")
+    except:
+        return ""
+
+def update_wpa_ssid(new_ssid):
+    # analog zu update_wpa_supplicant_frequency: sed + minimal escaping
+    ssid_escaped = str(new_ssid).replace('"','\\"')
+    cmd = f'sed -i \'s/^ssid=.*/ssid="{ssid_escaped}"/\' {WPA_WLAN1_CONF}'
+    return subprocess.run(cmd, shell=True, capture_output=True)
+
+def update_wpa_psk(new_psk):
+    psk_escaped = str(new_psk).replace('"','\\"')
+    cmd = f'sed -i \'s/^psk=.*/psk="{psk_escaped}"/\' {WPA_WLAN1_CONF}'
+    return subprocess.run(cmd, shell=True, capture_output=True)
+
+def _safe_read(p, default='-'):
+    try:
+        return open(p).read().strip()
+    except Exception:
+        return default
+
+def _iface_state(iface):
+    return _safe_read(f'/sys/class/net/{iface}/operstate')
+
+def _bridge_members_br0():
+    out = subprocess.getoutput("bridge link show | awk '/master br0/ {print $2}'")
+    return [x for x in out.split() if x]
+
+def _bat_members():
+    out = subprocess.getoutput("batctl if | awk '{print $1}'")
+    return [x for x in out.split() if x]
+
+def _neigh_active_macs(dev="br0"):
+    out = subprocess.getoutput(f"ip neigh show dev {dev}")
+    macs = set()
+    for line in out.splitlines():
+        # Beispiele: 192.168.1.23 dev br0 lladdr 12:34:56:78:9a:bc REACHABLE
+        m = re.search(r"lladdr\s+([0-9a-f:]{17})\s+([A-Z]+)", line, re.I)
+        if m:
+            mac, state = m.group(1).lower(), m.group(2).upper()
+            if state in NEIGH_ACTIVE:
+                macs.add(mac)
+    return macs
+
+def _wifi_assoc_macs(iface="wlan0"):
+    out = subprocess.getoutput(f"iw dev {iface} station dump")
+    return set(m.lower() for m in re.findall(r"Station\s+([0-9a-f:]{17})", out, re.I))
 
 
 
@@ -308,7 +458,10 @@ def dhcp_config_page():
 def node_info_page():
     return render_template('node-info.html',
                            hostname=socket.gethostname(),
-                           local_mac=get_local_mac())
+                           local_mac=get_local_mac(),
+                           app_version=APP_VERSION,
+                           flask_version=flask.__version__,
+                           python_version=sys.version.split()[0])
 
 @app.route('/about')
 def about_page():
@@ -517,13 +670,104 @@ def api_dhcp_config():
 
 @app.route('/api/dhcp-leases')
 def api_dhcp_leases():
-    return jsonify({'leases': read_dhcp_leases()})
+    leases = read_dhcp_leases()
+    now = int(datetime.now().timestamp())
+
+    # Gültige Leases (nicht abgelaufen)
+    lease_macs = {l['mac'].lower() for l in leases
+                  if str(l.get('expires','')).isdigit() and int(l['expires']) > now}
+
+    # Aktive MACs laut System
+    active_neigh = _neigh_active_macs("br0")
+    active_wifi  = _wifi_assoc_macs("wlan0")
+
+    # Schnittmenge = wirklich aktiv
+    active_macs = lease_macs & (active_neigh | active_wifi)
+    active_leases = [l for l in leases if l['mac'].lower() in active_macs]
+
+    return jsonify({
+        "leases": leases,                # alle
+        "active_leases": active_leases,  # nur aktive
+        "active_clients": len(active_macs),
+        "hostname": socket.gethostname(),
+        "local_mac": get_local_mac(),
+    })
+
 
 @app.route('/api/node-info')
 def api_node_info():
     return jsonify(gather_node_info())
 
+@app.route('/api/wifi-ssid', methods=['GET'])
+def api_wifi_ssid_get():
+    return jsonify({'ssid': get_current_ssid()})
+
+@app.route('/api/wifi-ssid', methods=['POST'])
+def api_wifi_ssid_set():
+    try:
+        data = request.get_json(force=True) or {}
+        ssid = (data.get('ssid') or '').strip()
+        if not ssid:
+            return jsonify({'error':'missing ssid'}), 400
+        r = update_wpa_ssid(ssid)
+        if r.returncode != 0:
+            return jsonify({'error':'failed to set ssid', 'stderr': (r.stderr or b'').decode("utf-8","ignore")} ), 500
+        return jsonify({'success': True, 'ssid': ssid})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/wifi-psk', methods=['POST'])
+def api_wifi_psk_set():
+    try:
+        data = request.get_json(force=True) or {}
+        psk = data.get('psk')
+        if not psk:
+            return jsonify({'error':'missing psk'}), 400
+        r = update_wpa_psk(psk)
+        if r.returncode != 0:
+            return jsonify({'error':'failed to set psk', 'stderr': (r.stderr or b'').decode("utf-8","ignore")} ), 500
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ======== Service-Reboot – nutzt vorhandene ALLOWED_SERVICES (inkl. "networking") ========
+@app.route('/api/restart-service', methods=['POST'])
+def api_restart_service():
+    try:
+        data = request.get_json(force=True) or {}
+        name = (data.get('name') or '').strip()
+        if not name:
+            return jsonify({'error':'missing service name'}), 400
+        if name not in ALLOWED_SERVICES:
+            return jsonify({'error':'service not allowed'}), 403
+        r = subprocess.run(['sudo','systemctl','restart', name], capture_output=True, text=True)
+        if r.returncode != 0:
+            return jsonify({'error':'failed to restart', 'stderr': r.stderr}), 500
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/network-status')
+def api_network_status():
+    # Routes
+    gw_line = subprocess.getoutput("ip route show default").splitlines()
+    gateway = gw_line[0].split()[2] if gw_line else '-'
+    subnet  = subprocess.getoutput("ip -o addr show br0 | awk '{print $4}'").strip() or '-'
+
+    # Bridges
+    bridge = {
+        'br0': {'state': _iface_state('br0'), 'members': _bridge_members_br0()},
+        'bat0': {'state': _iface_state('bat0'), 'members': _bat_members()},
+    }
+
+    return jsonify({
+        'routes': {'subnet': subnet, 'gateway': gateway},
+        'bridge': bridge,
+        'hostname': socket.gethostname(),
+        'local_mac': _safe_read('/sys/class/net/br0/address', '?'),
+    })
+
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
 

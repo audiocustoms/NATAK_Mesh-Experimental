@@ -4,6 +4,4 @@ Name=wlan0
 [Network]
 Bridge=br0
 DHCP=no
-ActivationPolicy=manual
-RequiredForOnline=no
 LinkLocalAddressing=no
