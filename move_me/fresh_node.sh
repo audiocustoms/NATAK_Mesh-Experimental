@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# FRESH NODE SETUP (NatakMesh) – safer, structured, idempotent-ish
+# FRESH NODE SETUP (OrbisMesh) – safer, structured, idempotent-ish
 # ------------------------------------------------------------------------------
 
 set -Eeuo pipefail
 
 
 # -------- Confirmation ---------------------------------------------------------
-read -r -p "This script will prepare your device to be used with NATAK Mesh. Do you want to continue? [y/N] " ans
+echo
+echo "=============================================================="
+echo "This script will install 'OrbisMesh' on your system."
+echo "=============================================================="
+read -r -p "Do you want to continue? [y/n] " ans
 case "$ans" in
   [Yy]*) echo "Proceeding with setup...";;
   *) echo "Aborted."; exit 1;;
@@ -244,14 +248,15 @@ fi
 LOG_TS; echo "Installing system packages …"
 export DEBIAN_FRONTEND=noninteractive
 run "sudo apt-get update -y"
-run "sudo DEBIAN_FRONTEND=readline apt-get install -q -y hostapd batctl python3 python3-pip pipx aircrack-ng iperf3 ufw network-manager alfred dnsmasq"
+sudo DEBIAN_FRONTEND=readline apt-get install -y --no-install-recommends hostapd batctl
+sudo DEBIAN_FRONTEND=readline apt-get install -y --no-install-recommends python3 python3-pip pipx
+sudo DEBIAN_FRONTEND=readline apt-get install -y --no-install-recommends aircrack-ng iperf3 network-manager alfred dnsmasq
 
 # Load batman-adv kernel module & keep it persistent
 run "sudo modprobe -v batman_adv"
 run "echo 'batman_adv' | sudo tee /etc/modules-load.d/batman_adv.conf >/dev/null"
 
-# Bind alfred to batman-adv
-run "sudo alfred -i bat0 -b"
+
 
 # -------- Python Tools (Reticulum, Nomadnet, Flask) ----------------------------
 LOG_TS; echo "Installing Python tools … (preferring pipx)"
@@ -315,12 +320,10 @@ if $USE_PIPX; then
 
   # Reinstall via pipx to ensure proper shims
   run "pipx uninstall rns || true"
-  #run "pipx uninstall nomadnet || true"
   run "pipx install rns"
-  run "pipx install nomadnet"
-      run "pipx install flask || pipx upgrade flask"
+  run "pipx install flask || pipx upgrade flask"
 else
-  run "pip3 install --upgrade --break-system-packages rns nomadnet flask"
+  run "pip3 install --upgrade --break-system-packages rns flask"
   # fallback: extend PATH for ~/.local/bin
   run "grep -q 'HOME/.local/bin' ~/.bashrc || echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
 fi
@@ -331,7 +334,7 @@ LOG_TS; echo "Copying configuration files from ${MOVE_SRC} …"
 
 # User directories
 dst="${HOME}/"
-for d in mesh mesh_monitor .reticulum .nomadnet; do
+for d in mesh mesh_monitor .reticulum; do
   src="${MOVE_SRC}/home/natak/${d}"
   if [ -d "$src" ]; then
     run "cp -a -v \"$src\" \"$dst\""
@@ -392,22 +395,33 @@ function replace
 }
 
 root=""
+
+# Farbdefinitionen
+GREEN="\e[32m"
+RESET="\e[0m"
+
+# SSID
 line="$(grep '^ssid=' ${root}/etc/hostapd/hostapd.conf)"
 ssid=${line#ssid=}
-replace "$ssid" "SSID" "${root}/etc/hostapd/hostapd.conf"
+echo -e "${GREEN}Change local OrbisMesh SSID${RESET}"
+replace "$ssid" "${GREEN}Change local OrbisMesh SSID${RESET}" "${root}/etc/hostapd/hostapd.conf"
 
+# Passwort
 line="$(grep '^wpa_passphrase=' ${root}/etc/hostapd/hostapd.conf)"
 wpa_pass=${line#wpa_passphrase=}
-replace "$wpa_pass" "WPA pass phrase" "${root}/etc/hostapd/hostapd.conf"
+echo -e "${GREEN}Change local SSID Password${RESET}"
+replace "$wpa_pass" "${GREEN}Change local SSID Password${RESET}" "${root}/etc/hostapd/hostapd.conf"
 
+# IP-Adresse
 line="$(grep '^Address=' ${root}/etc/systemd/network/br0.network)"
 line=${line#Address=}
 ip_addr=${line%/24}
-replace "$ip_addr" "IP address" "${root}/etc/systemd/network/br0.network"
+echo -e "${GREEN}Change Node IP address${RESET}"
+replace "$ip_addr" "${GREEN}Change Node IP address${RESET}" "${root}/etc/systemd/network/br0.network"
 
-line="$(grep '^DNS=' ${root}/etc/systemd/network/br0.network)"
-dns=${line#DNS=}
-replace "$dns" "DNS" "${root}/etc/systemd/network/br0.network"
+#line="$(grep '^DNS=' ${root}/etc/systemd/network/br0.network)"
+#dns=${line#DNS=}
+#replace "$dns" "Change DNS" "${root}/etc/systemd/network/br0.network"
 
 # -------- Show Log Summary -----------------------------------------------------
 echo

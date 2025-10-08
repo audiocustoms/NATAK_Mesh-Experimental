@@ -9,7 +9,7 @@ set -Eeuo pipefail
 LOG_TS() { printf '[%s] ' "$(date '+%F %T')"; }
 
 # -------- Confirmation ---------------------------------------------------------
-read -r -p "This script will enable and activate all required services for NATAK Mesh and reboot your system. Do you want to continue? [Y/N] " ans
+read -r -p "This script will enable and activate all required services for Orbis Mesh and reboot your system. Do you want to continue? [Y/N] " ans
 case "$ans" in
   [Yy]*) echo "Proceeding with post-setup...";;
   *) echo "Aborted."; exit 1;;
@@ -29,6 +29,8 @@ if [ -f "${HOME}/move_me/etc/NetworkManager/conf.d/unmanaged.conf" ]; then
 else
   LOG_TS; echo "WARNING: unmanaged.conf not found in ${HOME}/move_me/etc/NetworkManager/conf.d"
 fi
+
+
 
 # 2. Reload systemd units
 LOG_TS; echo "Reloading systemd units …"
