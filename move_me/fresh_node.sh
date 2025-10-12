@@ -7,9 +7,20 @@ set -Eeuo pipefail
 
 
 # -------- Confirmation ---------------------------------------------------------
-echo
+
+echo "┌───────────────────────────────────────────────────┐"
+echo "│                                                   │"
+echo "│   ___       _     _       __  __           _      │"
+echo "│  / _ \ _ __| |__ (_)___  |  \/  | ___  ___| |__   │"
+echo "│ | | | | '__| '_ \| / __| | |\/| |/ _ \/ __| '_ \  │"
+echo "│ | |_| | |  | |_) | \__ \ | |  | |  __/\__ \ | | | │"
+echo "│  \___/|_|  |_.__/|_|___/ |_|  |_|\___||___/_| |_| │"
+echo "│                                                   │"
+echo "└───────────────────────────────────────────────────┘"
+echo ""
+echo ""
 echo "=============================================================="
-echo "This script will install 'OrbisMesh' on your system."
+echo "This script will install 'Orbis Mesh' on your system."
 echo "=============================================================="
 read -r -p "Do you want to continue? [y/n] " ans
 case "$ans" in
@@ -376,52 +387,95 @@ run "sudo systemctl enable alfred-hostname.timer"
 run "sudo systemctl enable ogm-monitor.service"
 run "sudo systemctl unmask hostapd || true"
 
-# -------- Update values --------------------------------------------------------
+# -------- Update values (SSID, Passphrase, IP) --------------------------------
 
-sudo="sudo "
+# Farben
+GREEN="\033[1;32m"
+RESET="\033[0m"
 
-function replace
-{
-	old=$1
-	name=$2
-	file=$3
+# Bildschirm löschen
+clear
 
-	echo -n "$name: [${old}]: "
-	read new
-	if [ "$new" != "" ] ; then
-		clean=${new//\//\\\/}
-		${sudo}sed -e "s/${old}/${clean}/" -i $file
-	fi
-}
+# Dateien
+HOSTAPD="${root:-}/etc/hostapd/hostapd.conf"
+NETFILE="${root:-}/etc/systemd/network/br0.network"
 
-root=""
+# Helfer: sed-escape für / und &
+_esc() { printf '%s' "$1" | sed -e 's/[\/&]/\\&/g'; }
 
-# Farbdefinitionen
-GREEN="\e[32m"
-RESET="\e[0m"
+# Aktuelle Werte lesen (nur erste Übereinstimmung)
+CUR_SSID="$(awk -F= '/^ssid=/{print $2; exit}' "$HOSTAPD" 2>/dev/null || true)"
+CUR_PASS="$(awk -F= '/^wpa_passphrase=/{print $2; exit}' "$HOSTAPD" 2>/dev/null || true)"
+CUR_ADDR="$(awk -F= '/^Address=/{print $2; exit}' "$NETFILE" 2>/dev/null || true)"
 
-# SSID
-line="$(grep '^ssid=' ${root}/etc/hostapd/hostapd.conf)"
-ssid=${line#ssid=}
-echo -e "${GREEN}Change local OrbisMesh SSID${RESET}"
-replace "$ssid" "${GREEN}Change local OrbisMesh SSID${RESET}" "${root}/etc/hostapd/hostapd.conf"
+# IP & Präfix trennen (z. B. 192.168.1.10/24)
+CUR_IP="${CUR_ADDR%%/*}"
+CUR_CIDR="${CUR_ADDR##*/}"
+# Fallback, falls kein / vorhanden
+[ "$CUR_CIDR" = "$CUR_ADDR" ] && CUR_CIDR="24"
 
-# Passwort
-line="$(grep '^wpa_passphrase=' ${root}/etc/hostapd/hostapd.conf)"
-wpa_pass=${line#wpa_passphrase=}
-echo -e "${GREEN}Change local SSID Password${RESET}"
-replace "$wpa_pass" "${GREEN}Change local SSID Password${RESET}" "${root}/etc/hostapd/hostapd.conf"
+echo -e "${GREEN}=== Local SSID, Password and IP Configuration ===${RESET}"
+echo "Leave empty if unchanged."
+echo
 
-# IP-Adresse
-line="$(grep '^Address=' ${root}/etc/systemd/network/br0.network)"
-line=${line#Address=}
-ip_addr=${line%/24}
-echo -e "${GREEN}Change Node IP address${RESET}"
-replace "$ip_addr" "${GREEN}Change Node IP address${RESET}" "${root}/etc/systemd/network/br0.network"
+# Interaktiv abfragen (oder via NEW_SSID/NEW_PASS/NEW_IP/NEW_CIDR Variablen)
+read -r -p "$(echo -e "${GREEN}New Local SSID [${CUR_SSID:-unverändert}]: ${RESET}")" NEW_SSID
+read -r -p "$(echo -e "${GREEN}New SSID Password [${CUR_PASS:+*****}/unverändert]: ${RESET}")" NEW_PASS
+read -r -p "$(echo -e "${GREEN}New Node-IP (without prefix) [${CUR_IP:-unverändert}]: ${RESET}")" NEW_IP
+read -r -p "$(echo -e "${GREEN}New Prefix (CIDR, e.g. 24) [${CUR_CIDR}]: ${RESET}")" NEW_CIDR
+echo
 
-#line="$(grep '^DNS=' ${root}/etc/systemd/network/br0.network)"
-#dns=${line#DNS=}
-#replace "$dns" "Change DNS" "${root}/etc/systemd/network/br0.network"
+# Defaults anwenden, wenn leer gelassen
+NEW_SSID="${NEW_SSID:-$CUR_SSID}"
+NEW_PASS="${NEW_PASS:-$CUR_PASS}"
+NEW_IP="${NEW_IP:-$CUR_IP}"
+NEW_CIDR="${NEW_CIDR:-$CUR_CIDR}"
+
+# --- Minimal-Validierung
+_err=false
+[ -z "$NEW_SSID" ] && echo "WARN: SSID is empty." && _err=true
+[ -z "$NEW_PASS" ] && echo "WARN: Password is empty." && _err=true
+if [ -n "$NEW_IP" ] && ! printf '%s' "$NEW_IP" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$'; then
+  echo "ERROR: Invalid IP: $NEW_IP"; _err=true
+fi
+if ! printf '%s' "$NEW_CIDR" | grep -Eq '^[0-9]{1,2}$'; then
+  echo "ERROR: Invalid Prefix: $NEW_CIDR"; _err=true
+fi
+$_err && echo "Aborted due to input errors." && exit 1
+
+# Änderungen anwenden
+if [ -f "$HOSTAPD" ]; then
+  if grep -qE '^ssid=' "$HOSTAPD"; then
+    sed -i -E "s/^(ssid=).*/\1$(_esc "$NEW_SSID")/" "$HOSTAPD"
+  else
+    printf '\nssid=%s\n' "$NEW_SSID" | tee -a "$HOSTAPD" >/dev/null
+  fi
+
+  if grep -qE '^wpa_passphrase=' "$HOSTAPD"; then
+    sed -i -E "s/^(wpa_passphrase=).*/\1$(_esc "$NEW_PASS")/" "$HOSTAPD"
+  else
+    printf 'wpa_passphrase=%s\n' "$NEW_PASS" | tee -a "$HOSTAPD" >/dev/null
+  fi
+else
+  echo "WARN: $HOSTAPD not found – Skip changes."
+fi
+
+if [ -f "$NETFILE" ]; then
+  if grep -qE '^Address=' "$NETFILE"; then
+    sed -i -E "s/^Address=.*/Address=$(_esc "$NEW_IP")\/$NEW_CIDR/" "$NETFILE"
+  else
+    printf '\nAddress=%s/%s\n' "$NEW_IP" "$NEW_CIDR" | tee -a "$NETFILE" >/dev/null
+  fi
+else
+  echo "WARN: $NETFILE not found – Skip changes."
+fi
+
+echo -e "${GREEN}Configuration updated:${RESET}"
+echo "  SSID         : ${NEW_SSID}"
+echo "  Passphrase   : ${NEW_PASS:+(gesetzt)}"
+echo "  IP/CIDR      : ${NEW_IP}/${NEW_CIDR}"
+echo
+
 
 # -------- Show Log Summary -----------------------------------------------------
 echo
