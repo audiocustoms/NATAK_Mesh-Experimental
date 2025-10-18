@@ -107,7 +107,7 @@ fi
 LOG_TS; echo "Installing system packages …"
 export DEBIAN_FRONTEND=noninteractive
 run "sudo apt-get update -y"
-run "sudo DEBIAN_FRONTEND=readline apt-get install -q -y hostapd batctl python3 python3-pip pipx aircrack-ng iperf3 ufw network-manager"
+run "sudo DEBIAN_FRONTEND=readline apt-get install -q -y hostapd batctl python3 python3-pip pipx aircrack-ng iperf3 ufw network-manager python3-flask"
 
 # Load batman-adv kernel module & keep it persistent
 run "sudo modprobe -v batman_adv"
@@ -178,9 +178,8 @@ if $USE_PIPX; then
   run "pipx uninstall nomadnet || true"
   run "pipx install rns"
   run "pipx install nomadnet"
-      run "pipx install flask || pipx upgrade flask"
 else
-  run "pip3 install --upgrade --break-system-packages rns nomadnet flask"
+  run "pip3 install --upgrade --break-system-packages rns nomadnet"
   # fallback: extend PATH for ~/.local/bin
   run "grep -q 'HOME/.local/bin' ~/.bashrc || echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
 fi
