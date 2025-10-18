@@ -73,6 +73,22 @@ need systemctl || true
 LOG_TS; echo "Starting setup …"
 LOG_TS; echo "Options: reset-id=${RUN_RESET_ID}, pipx=${USE_PIPX}, reboot=${DO_REBOOT}, dry-run=${DRY_RUN}"
 
+n_wlan=$(iw dev | grep "^[[:space:]]*Interface" | wc -l)
+if [ "$n_wlan" -lt 2 ]; then
+  drv=""
+  if [ "$n_wlan" -eq 1 -a -e /sys/class/net/wlan0/device ]; then
+    drv=$(basename $(readlink -f "/sys/class/net/wlan0/device/driver/module"))
+    read mac < /sys/class/net/wlan0/address
+    echo "SUBSYSTEM==\"net\", ACTION==\"add\", ATTR{address}==\"${mac}\", NAME=\"wlan1\"" | sudo tee /etc/udev/rules.d/50-wlan1.rules > /dev/null
+    run "sudo rmmod $drv"
+  fi
+  run "sudo modprobe dummy"
+  run "sudo ip link add wlan0 type dummy"
+  if [ -n "$drv" ]; then
+    run "sudo modprobe $drv"
+  fi
+fi
+
 # -------- Optional: Reset for cloned images -----------------------------------
 if $RUN_RESET_ID; then
   LOG_TS; echo "Running machine reset for cloned images …"
@@ -91,7 +107,7 @@ fi
 LOG_TS; echo "Installing system packages …"
 export DEBIAN_FRONTEND=noninteractive
 run "sudo apt-get update -y"
-run "sudo DEBIAN_FRONTEND=readline apt-get install -q -y hostapd batctl python3 python3-pip pipx aircrack-ng iperf3 ufw network-manager"
+run "sudo DEBIAN_FRONTEND=readline apt-get install -q -y hostapd batctl python3 python3-pip pipx aircrack-ng iperf3 ufw network-manager python3-flask"
 
 # Load batman-adv kernel module & keep it persistent
 run "sudo modprobe -v batman_adv"
@@ -162,9 +178,8 @@ if $USE_PIPX; then
   run "pipx uninstall nomadnet || true"
   run "pipx install rns"
   run "pipx install nomadnet"
-      run "pipx install flask || pipx upgrade flask"
 else
-  run "pip3 install --upgrade --break-system-packages rns nomadnet flask"
+  run "pip3 install --upgrade --break-system-packages rns nomadnet"
   # fallback: extend PATH for ~/.local/bin
   run "grep -q 'HOME/.local/bin' ~/.bashrc || echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
 fi
