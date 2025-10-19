@@ -261,7 +261,7 @@ export DEBIAN_FRONTEND=noninteractive
 run "sudo apt-get update -y"
 sudo DEBIAN_FRONTEND=readline apt-get install -y --no-install-recommends hostapd batctl
 sudo DEBIAN_FRONTEND=readline apt-get install -y --no-install-recommends python3 python3-pip pipx
-sudo DEBIAN_FRONTEND=readline apt-get install -y --no-install-recommends aircrack-ng iperf3 network-manager alfred dnsmasq
+sudo DEBIAN_FRONTEND=readline apt-get install -y --no-install-recommends aircrack-ng iperf3 network-manager alfred dnsmasq python3-flask
 
 # Load batman-adv kernel module & keep it persistent
 run "sudo modprobe -v batman_adv"
@@ -332,9 +332,7 @@ if $USE_PIPX; then
   # Reinstall via pipx to ensure proper shims
   run "pipx uninstall rns || true"
   run "pipx install rns"
-  run "pipx install flask || pipx upgrade flask"
 else
-  run "pip3 install --upgrade --break-system-packages rns flask"
   # fallback: extend PATH for ~/.local/bin
   run "grep -q 'HOME/.local/bin' ~/.bashrc || echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
 fi
