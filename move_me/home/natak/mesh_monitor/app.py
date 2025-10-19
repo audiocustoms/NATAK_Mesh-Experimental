@@ -209,35 +209,69 @@ def restart_service(service):
     return subprocess.run(['sudo','systemctl','restart',service], capture_output=True, text=True)
 
 def read_dhcp_config():
-    """Very simple parser for /etc/dnsmasq.d/orbismesh.conf if present."""
-    cfg = {'enabled': True, 'range_start':'10.20.1.100','range_end':'10.20.1.200','lease':'12h'}
-    path = '/etc/dnsmasq.d/orbismesh.conf'
+    """
+    Parser für /etc/dnsmasq/mesh-br0.conf.
+    Erwartet z.B.:
+      interface=br0
+      dhcp-range=192.168.200.100,192.168.200.199,255.255.255.0,12h
+      disable-dhcp  (optional)
+    """
+    cfg = {
+        'enabled': True,
+        'range_start': '192.168.200.100',
+        'range_end':   '192.168.200.199',
+        'netmask':     '255.255.255.0',
+        'lease':       '12h'
+    }
+    path = '/etc/dnsmasq/mesh-br0.conf'
     if not os.path.exists(path):
         return cfg
     try:
-        with open(path,'r') as f:
-            txt=f.read()
-        m=re.search(r'dhcp-range=\s*([\d\.]+),\s*([\d\.]+),\s*([^,\s]+)', txt)
+        with open(path, 'r') as f:
+            txt = f.read()
+        # 4-teilige dhcp-range (start,end,netmask,lease)
+        m = re.search(
+            r'^\s*dhcp-range\s*=\s*([\d\.]+)\s*,\s*([\d\.]+)\s*,\s*([\d\.]+)\s*,\s*([^,\s#]+)',
+            txt, flags=re.M
+        )
         if m:
-            cfg['range_start'], cfg['range_end'], cfg['lease'] = m.group(1), m.group(2), m.group(3)
-        if 'disable-dhcp' in txt: cfg['enabled']=False
-    except: pass
+            cfg['range_start'], cfg['range_end'], cfg['netmask'], cfg['lease'] = m.groups()
+        if re.search(r'^\s*disable-dhcp\b', txt, flags=re.M):
+            cfg['enabled'] = False
+    except Exception:
+        pass
     return cfg
 
-def write_dhcp_config(enabled, start, end, lease):
-    path = '/etc/dnsmasq.d/orbismesh.conf'
-    lines = [
-        '# Managed by mesh_monitor',
-        f"dhcp-range={start},{end},{lease}"
-    ]
-    if not enabled:
-        lines.append('disable-dhcp')
+
+def write_dhcp_config(enabled, start, end, lease, netmask='255.255.255.0'):
+    path = '/etc/dnsmasq/mesh-br0.conf'
+    existing = []
     try:
-        with open(path,'w') as f:
-            f.write('\n'.join(lines)+'\n')
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                existing = f.read().splitlines()
+    except Exception:
+        existing = []
+
+    kept = []
+    for ln in existing:
+        if re.match(r'^\s*dhcp-range\s*=', ln): 
+            continue
+        if re.match(r'^\s*disable-dhcp\b', ln): 
+            continue
+        kept.append(ln)
+
+    kept.append(f"dhcp-range={start},{end},{netmask},{lease}")
+    if not enabled:
+        kept.append("disable-dhcp")
+
+    try:
+        with open(path, 'w') as f:
+            f.write('\n'.join(kept).rstrip() + '\n')
         return True, "DHCP Konfiguration geschrieben"
     except Exception as e:
         return False, f"Fehler: {e}"
+
 
 def read_dhcp_leases():
     leases=[]
@@ -655,18 +689,23 @@ def api_service():
         return jsonify(success=True, message=f'{svc} neu gestartet')
     return jsonify(success=False, error=proc.stderr or 'Fehler')
 
-@app.route('/api/dhcp-config', methods=['GET','POST'])
+@app.route('/api/dhcp-config', methods=['GET', 'POST'])
 def api_dhcp_config():
     if request.method == 'GET':
         cfg = read_dhcp_config()
         cfg.update({'hostname': socket.gethostname(), 'local_mac': get_local_mac()})
         return jsonify(cfg)
+
     d = request.get_json(force=True) or {}
-    ok,msg = write_dhcp_config(bool(d.get('enabled',True)),
-                               d.get('range_start','10.20.1.100'),
-                               d.get('range_end','10.20.1.200'),
-                               d.get('lease','12h'))
+    ok, msg = write_dhcp_config(
+        bool(d.get('enabled', True)),
+        d.get('range_start', '192.168.200.100'),
+        d.get('range_end',   '192.168.200.199'),
+        d.get('lease',       '12h'),
+        d.get('netmask',     '255.255.255.0')
+    )
     return jsonify(success=ok, message=msg if ok else None, error=None if ok else msg)
+
 
 @app.route('/api/dhcp-leases')
 def api_dhcp_leases():
@@ -683,7 +722,17 @@ def api_dhcp_leases():
 
     # Schnittmenge = wirklich aktiv
     active_macs = lease_macs & (active_neigh | active_wifi)
-    active_leases = [l for l in leases if l['mac'].lower() in active_macs]
+    active_leases = []
+    for l in leases:
+        mac = l["mac"].lower()
+        if mac in active_macs:
+            if mac in active_wifi:
+                l["adapter"] = "wlan"
+            elif mac in active_neigh:
+                l["adapter"] = "ethernet"
+            else:
+                l["adapter"] = "?"
+            active_leases.append(l)
 
     return jsonify({
         "leases": leases,                # alle
