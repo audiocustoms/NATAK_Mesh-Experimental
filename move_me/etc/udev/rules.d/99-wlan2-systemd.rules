@@ -1,0 +1,6 @@
+# Start wpa_supplicant@wlan2.service automatically when kernel creates wlan2
+ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan2", TAG+="systemd", ENV{SYSTEMD_WANTS}="wpa_supplicant@%k.service"
+
+# Note: Drop-in in repo `move_me/etc/systemd/system/wpa_supplicant@wlan2.service.d/override.conf`
+# ensures the unit is skipped if interface absent. Keep the template disabled at boot
+# and rely on this udev rule to start it only when hardware/virtual interface appears.
