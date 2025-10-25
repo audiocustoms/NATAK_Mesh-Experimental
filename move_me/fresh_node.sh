@@ -237,7 +237,7 @@ run "sudo install -d /etc/dnsmasq.d /etc/hostapd /etc/modprobe.d /etc/NetworkMan
 # Concrete copies (only if present)
 for name in etc/dnsmasq.d etc/hostapd etc/modprobe.d etc/NetworkManager etc/sudoers.d etc/sysctl.d etc/udev etc/systemd/network etc/systemd/system; do
   if test -d "${MOVE_SRC}/${name}"; then
-    run "sudo cp -v ${MOVE_SRC}/${name}/* /${name}/"
+    run "sudo cp -a ${MOVE_SRC}/${name}/* /${name}/"
   else
     LOG_TS; echo "Skipping: ${MOVE_SRC}/${name} not found."
   fi
