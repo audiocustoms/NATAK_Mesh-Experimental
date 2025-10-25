@@ -31,9 +31,9 @@ rm -f /var/run/wpa_supplicant/wlan1 2>/dev/null || true
 echo "[$(ts)] start batmesh.sh (open 802.11s + batman-adv)"
 /home/natak/mesh/batmesh.sh || echo "[$(ts)] WARN: batmesh.sh exit code $?"
 
-# 3) wait till bat0 is up (max. 30s), just info
-echo "[$(ts)] wait for bat0=UP (max 30s)"
-for i in $(seq 30); do
+# 3) wait till bat0 is up (max. 10s), just info (reduced to speed up boot)
+echo "[$(ts)] wait for bat0=UP (max 10s)"
+for i in $(seq 10); do
   if ip link show bat0 2>/dev/null | grep -q "state UP"; then
     echo "[$(ts)] OK: bat0 is UP"
     break

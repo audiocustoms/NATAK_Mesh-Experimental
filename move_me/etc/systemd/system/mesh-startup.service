@@ -11,11 +11,9 @@ RemainAfterExit=yes
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Falls /home separat gemountet ist
 WorkingDirectory=/home/natak
-# buffer
-ExecStartPre=/bin/sleep 3
 ExecStart=/home/natak/mesh/startup_sequence.sh
-# 60s auf Mesh-Join warten
-TimeoutStartSec=180
+# 60s auf Mesh-Join warten (reduziert von 180s)
+TimeoutStartSec=60
 StandardOutput=journal
 StandardError=journal
 
