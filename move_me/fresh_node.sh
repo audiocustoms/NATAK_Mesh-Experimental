@@ -88,7 +88,7 @@ need tee
 need awk
 need sed
 need grep
-need systemctl || true
+command -v systemctl >/dev/null 2>&1 || true
 
 LOG_TS; echo "Starting setup …"
 LOG_TS; echo "Options: reset-id=${RUN_RESET_ID}, pipx=${USE_PIPX}, reboot=${DO_REBOOT}, dry-run=${DRY_RUN}"
@@ -259,18 +259,20 @@ run "clear"
 
 sudo="sudo "
 
-function replace
-{
-	old=$1
-	name=$2
-	file=$3
+replace() {
+  local old="$1"
+  local name="$2"
+  local file="$3"
+  local new clean
 
-	echo -n "$name: [${old}]: "
-	read new
-	if [ "$new" != "" ] ; then
-		clean=${new//\//\\\/}
-		${sudo}sed -e "s/${old}/${clean}/" -i $file
-	fi
+  echo -n "$name: [${old}]: "
+  read -r new
+  if [ -n "$new" ]; then
+    # use | as sed delimiter so slashes in the replacement don't need escaping
+    # escape literal '|' in the new value to avoid breaking the delimiter
+    clean="${new//|/\\|}"
+    ${sudo}sed -i "s|${old}|${clean}|" "$file"
+  fi
 }
 
 root=""
@@ -313,5 +315,5 @@ if $DO_REBOOT; then
     LOG_TS; echo "Reboot skipped."
   fi
 else
-  LOG_TS; echo "Setup finished – no reboot triggered but requred!"
+  LOG_TS; echo "Setup finished – no reboot triggered but required!"
 fi
