@@ -1,8 +1,11 @@
 # /etc/systemd/system/mesh-startup.service
 [Unit]
 Description=Mesh Network and Monitor (startup_sequence.sh wrapper)
-After=local-fs.target systemd-modules-load.service network-online.target
-Wants=network-online.target
+# Depend on the network daemon rather than network-online.target to avoid
+# being blocked by long-running wait-online services. Services that truly
+# require a configured IP should depend on network-online.target explicitly.
+After=local-fs.target systemd-modules-load.service systemd-networkd.service
+Wants=systemd-networkd.service
 
 [Service]
 Type=oneshot
