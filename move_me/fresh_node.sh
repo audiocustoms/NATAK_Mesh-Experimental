@@ -197,7 +197,6 @@ if $USE_PIPX; then
 
   # Reinstall via pipx to ensure proper shims
   run "pipx uninstall rns || true"
-  run "pipx uninstall nomadnet || true"
   run "pipx install rns"
 else
   run "pip3 install --upgrade --break-system-packages rns"
@@ -214,7 +213,7 @@ LOG_TS; echo "Copying configuration files from ${MOVE_SRC} …"
 
 # User directories
 dst="${HOME}/"
-for d in mesh mesh_monitor .reticulum; do
+for d in mesh mesh_monitor .reticulum scripts; do
   src="${MOVE_SRC}/home/natak/${d}"
   if [ -d "$src" ]; then
     run "cp -a -v \"$src\" \"$dst\""
@@ -233,10 +232,10 @@ for d in mesh mesh_monitor .reticulum; do
 done
 
 # System directories
-run "sudo install -d /etc/hostapd /etc/modprobe.d /etc/systemd/network /etc/systemd/system /etc/wpa_supplicant /etc/sudoers.d /etc/dnsmasq.d /etc/sysctl.d"
+run "sudo install -d /etc/dnsmasq.d /etc/hostapd /etc/modprobe.d /etc/NetworkManager /etc/sudoers.d /etc/sysctl.d /etc/udev /etc/systemd/network /etc/systemd/system"
 
 # Concrete copies (only if present)
-for name in etc/hostapd etc/modprobe.d etc/systemd/network etc/systemd/system etc/wpa_supplicant /etc/sudoers.d /etc/dnsmasq.d /etc/sysctl.d; do
+for name in etc/dnsmasq.d etc/hostapd etc/modprobe.d etc/NetworkManager etc/sudoers.d etc/sysctl.d etc/udev etc/systemd/network etc/systemd/system; do
   if test -d "${MOVE_SRC}/${name}"; then
     run "sudo cp -v ${MOVE_SRC}/${name}/* /${name}/"
   else
