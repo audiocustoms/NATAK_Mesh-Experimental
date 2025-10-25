@@ -46,6 +46,9 @@ sudo systemctl enable mesh-monitor.service
 LOG_TS; echo "Enabling mesh-startup.service …"
 sudo systemctl enable mesh-startup.service
 
+LOG_TS; echo "Enabling NetworkManager.service …"
+sudo systemctl enable NetworkManager.service
+
 # -------- Show Log Summary -----------------------------------------------------
 echo
 echo "======================================================================"

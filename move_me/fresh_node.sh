@@ -8,178 +8,30 @@ set -Eeuo pipefail
 
 # -------- Confirmation ---------------------------------------------------------
 
-echo "┌───────────────────────────────────────────────────┐"
-echo "│                                                   │"
-echo "│   ___       _     _       __  __           _      │"
-echo "│  / _ \ _ __| |__ (_)___  |  \/  | ___  ___| |__   │"
-echo "│ | | | | '__| '_ \| / __| | |\/| |/ _ \/ __| '_ \  │"
-echo "│ | |_| | |  | |_) | \__ \ | |  | |  __/\__ \ | | | │"
-echo "│  \___/|_|  |_.__/|_|___/ |_|  |_|\___||___/_| |_| │"
-echo "│                                                   │"
-echo "└───────────────────────────────────────────────────┘"
+clear
+
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+echo -e "${GREEN}┌───────────────────────────────────────────────────┐${NC}"
+echo -e "${GREEN}│                                                   │${NC}"
+echo -e "${GREEN}│   ___       _     _       __  __           _      │${NC}"
+echo -e "${GREEN}│  / _ \ _ __| |__ (_)___  |  \/  | ___  ___| |__   │${NC}"
+echo -e "${GREEN}│ | | | | '__| '_ \| / __| | |\/| |/ _ \/ __| '_ \  │${NC}"
+echo -e "${GREEN}│ | |_| | |  | |_) | \__ \ | |  | |  __/\__ \ | | | │${NC}"
+echo -e "${GREEN}│  \___/|_|  |_.__/|_|___/ |_|  |_|\___||___/_| |_| │${NC}"
+echo -e "${GREEN}│                                                   │${NC}"
+echo -e "${GREEN}└───────────────────────────────────────────────────┘${NC}"
 echo ""
 echo ""
-echo "=============================================================="
+echo ""
 echo "This script will install 'Orbis Mesh' on your system."
-echo "=============================================================="
+echo ""
 read -r -p "Do you want to continue? [y/n] " ans
 case "$ans" in
   [Yy]*) echo "Proceeding with setup...";;
   *) echo "Aborted."; exit 1;;
 esac
-
-# --- WiFi naming guard: Reserve wlan0 for onboard or dummy, USB starts at wlan1 ---
-
-# Use sudo only when needed
-if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; else SUDO=""; fi
-
-# Helper: list wifi ifaces
-_list_wifi_ifaces() {
-  for p in /sys/class/net/*; do
-    n="$(basename "$p")"
-    # consider only real wifi (wireless/phy80211)
-    if [ -d "$p/wireless" ] || [ -e "$p/phy80211" ]; then
-      echo "$n"
-    fi
-  done
-}
-
-# Helper: return 0 if iface is on USB bus
-_is_usb_iface() {
-  local ifc="$1"
-  local devpath
-  devpath="$(readlink -f "/sys/class/net/$ifc/device" 2>/dev/null || true)"
-  # empty devpath for dummy or special cases -> treat as non-USB
-  [[ -n "$devpath" && "$devpath" == *"/usb"* ]]
-}
-
-# Helper: try to guess driver module providing an iface
-_iface_module() {
-  local ifc="$1"
-  local mod
-  mod="$(basename "$(readlink -f "/sys/class/net/$ifc/device/driver/module" 2>/dev/null)" 2>/dev/null || true)"
-  [ -n "$mod" ] && echo "$mod"
-}
-
-# Ensure dummy wlan0 exists and is up
-_ensure_dummy_wlan0() {
-  $SUDO modprobe dummy || true
-  # if wlan0 exists and is not dummy, remove/rename later
-  if ! ip link show wlan0 >/dev/null 2>&1; then
-    $SUDO ip link add wlan0 type dummy 2>/dev/null || true
-  fi
-  $SUDO ip link set wlan0 up 2>/dev/null || true
-}
-
-# Remove (unload) all detected wifi adapters by module, to re-enumerate cleanly
-_remove_all_wifi_adapters() {
-  local ifc mod
-  local -A SEEN=()
-  # bring all wifi ifaces down first
-  for ifc in $(_list_wifi_ifaces); do
-    $SUDO ip link set "$ifc" down 2>/dev/null || true
-  done
-  # collect unique modules
-  for ifc in $(_list_wifi_ifaces); do
-    mod="$(_iface_module "$ifc")"
-    # skip empty or dummy
-    if [ -n "$mod" ] && [ "$mod" != "dummy" ]; then
-      SEEN["$mod"]=1
-    fi
-  done
-  # unload modules (this will detach devices)
-  for mod in "${!SEEN[@]}"; do
-    $SUDO modprobe -r "$mod" 2>/dev/null || true
-  done
-}
-
-# Re-load previously unloaded modules (best-effort: udev will re-create ifaces)
-_reload_modules() {
-  local mod
-  # Try to read loaded modules list from lsmod is not reliable here,
-  # instead just probe common wifi stacks back; also re-probe saved set if available.
-  # You can extend this if you know your exact USB chips.
-  for mod in mt76 mt76x02_usb mt76x2u mt7601u rtl8xxxu ath9k_htc brcmfmac; do
-    $SUDO modprobe "$mod" 2>/dev/null || true
-  done
-  # Also trigger udev add in case devices are present
-  $SUDO udevadm trigger --subsystem-match=net --action=add 2>/dev/null || true
-}
-
-# Ensure onboard (non-USB) wifi ends up as wlan0; if absent, keep dummy
-_ensure_onboard_is_wlan0() {
-  local onboard_if="" other
-  for other in $(_list_wifi_ifaces); do
-    if _is_usb_iface "$other"; then
-      continue
-    fi
-    onboard_if="$other"
-    break
-  done
-
-  if [ -z "$onboard_if" ]; then
-    # No onboard found -> keep/ensure dummy on wlan0
-    _ensure_dummy_wlan0
-    return 0
-  fi
-
-  # If wlan0 already exists and is the onboard iface, we're good
-  if [ "$onboard_if" = "wlan0" ]; then
-    return 0
-  fi
-
-  # If wlan0 exists and is dummy, remove it to free the name
-  if ip -d link show wlan0 2>/dev/null | grep -q "<BROADCAST" ; then
-    # cannot reliably detect dummy via 'ip -d' on all distros; try a safe delete
-    $SUDO ip link set wlan0 down 2>/dev/null || true
-    $SUDO ip link delete wlan0 2>/dev/null || true
-  fi
-
-  # If wlan0 exists and is a USB wifi, move it away first
-  if ip link show wlan0 >/dev/null 2>&1; then
-    $SUDO ip link set wlan0 down 2>/dev/null || true
-    # Find a free name for temporary storage
-    local tmpname="wlan9tmp"
-    $SUDO ip link set wlan0 name "$tmpname" 2>/dev/null || true
-  fi
-
-  # Finally rename onboard to wlan0
-  $SUDO ip link set "$onboard_if" down 2>/dev/null || true
-  $SUDO ip link set "$onboard_if" name wlan0
-  $SUDO ip link set wlan0 up 2>/dev/null || true
-}
-
-# --- Prompt with 10s timeout (default: Yes) ---
-echo
-echo "=============================================================="
-echo "Does your system provide onboard WiFi?"
-echo "Press Enter for 'Yes' (default in 10 seconds) or type 'No'."
-echo "=============================================================="
-printf "Answer [Y/n]: "
-if read -r -t 10 REPLY; then
-  : # got input
-else
-  REPLY="Y"
-  echo "Y"
-fi
-
-case "$REPLY" in
-  [Nn]*)
-    echo "[WiFi guard] No onboard WiFi selected."
-    echo "[WiFi guard] Removing all detected WiFi adapters..."
-    _remove_all_wifi_adapters
-    echo "[WiFi guard] Ensuring dummy on wlan0..."
-    _ensure_dummy_wlan0
-    echo "[WiFi guard] Re-initializing USB WiFi adapters (they will enumerate from wlan1)..."
-    _reload_modules
-    ;;
-  *)
-    echo "[WiFi guard] Yes (onboard WiFi present). Verifying wlan0 assignment..."
-    _ensure_onboard_is_wlan0
-    ;;
-esac
-
-# End of WiFi naming guard
 
 # -------- Logging (warnings & errors) -----------------------------------------
 LOG_FILE="/tmp/fresh_node.log"
@@ -241,6 +93,22 @@ need systemctl || true
 LOG_TS; echo "Starting setup …"
 LOG_TS; echo "Options: reset-id=${RUN_RESET_ID}, pipx=${USE_PIPX}, reboot=${DO_REBOOT}, dry-run=${DRY_RUN}"
 
+n_wlan=$(iw dev | grep "^[[:space:]]*Interface" | wc -l)
+if [ "$n_wlan" -lt 2 ]; then
+  drv=""
+  if [ "$n_wlan" -eq 1 -a -e /sys/class/net/wlan0/device ]; then
+    drv=$(basename $(readlink -f "/sys/class/net/wlan0/device/driver/module"))
+    read mac < /sys/class/net/wlan0/address
+    echo "SUBSYSTEM==\"net\", ACTION==\"add\", ATTR{address}==\"${mac}\", NAME=\"wlan1\"" | sudo tee /etc/udev/rules.d/50-wlan1.rules > /dev/null
+    run "sudo rmmod $drv"
+  fi
+  run "sudo modprobe dummy"
+  run "sudo ip link add wlan0 type dummy"
+  if [ -n "$drv" ]; then
+    run "sudo modprobe $drv"
+  fi
+fi
+
 # -------- Optional: Reset for cloned images -----------------------------------
 if $RUN_RESET_ID; then
   LOG_TS; echo "Running machine reset for cloned images …"
@@ -259,15 +127,13 @@ fi
 LOG_TS; echo "Installing system packages …"
 export DEBIAN_FRONTEND=noninteractive
 run "sudo apt-get update -y"
-sudo DEBIAN_FRONTEND=readline apt-get install -y --no-install-recommends hostapd batctl
-sudo DEBIAN_FRONTEND=readline apt-get install -y --no-install-recommends python3 python3-pip pipx
-sudo DEBIAN_FRONTEND=readline apt-get install -y --no-install-recommends aircrack-ng iperf3 network-manager alfred dnsmasq python3-flask
+sudo DEBIAN_FRONTEND=readline apt-get install -y hostapd batctl wget curl
+sudo DEBIAN_FRONTEND=readline apt-get install -y python3 python3-pip pipx
+sudo DEBIAN_FRONTEND=readline apt-get install -y aircrack-ng iperf3 network-manager alfred dnsmasq python3-flask
 
 # Load batman-adv kernel module & keep it persistent
 run "sudo modprobe -v batman_adv"
 run "echo 'batman_adv' | sudo tee /etc/modules-load.d/batman_adv.conf >/dev/null"
-
-
 
 # -------- Python Tools (Reticulum, Nomadnet, Flask) ----------------------------
 LOG_TS; echo "Installing Python tools … (preferring pipx)"
@@ -331,11 +197,16 @@ if $USE_PIPX; then
 
   # Reinstall via pipx to ensure proper shims
   run "pipx uninstall rns || true"
+  run "pipx uninstall nomadnet || true"
   run "pipx install rns"
 else
+  run "pip3 install --upgrade --break-system-packages rns"
   # fallback: extend PATH for ~/.local/bin
   run "grep -q 'HOME/.local/bin' ~/.bashrc || echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
 fi
+
+# Note: consider disabling wpa_supplicant if hostapd should run exclusively in AP mode.
+# This is system-specific — intentionally NOT automated.
 
 # -------- File copies ----------------------------------------------------------
 LOG_TS; echo "Copying configuration files from ${MOVE_SRC} …"
@@ -352,12 +223,9 @@ for d in mesh mesh_monitor .reticulum; do
   fi
 done
 
-# Note: consider disabling wpa_supplicant if hostapd should run exclusively in AP mode.
-# This is system-specific — intentionally NOT automated.
-
 # -------- Permissions ----------------------------------------------------------
 LOG_TS; echo "Setting permissions on user directories …"
-for d in mesh mesh_monitor .reticulum .nomadnet; do
+for d in mesh mesh_monitor .reticulum; do
   dst="${HOME}/${d}"
   if [ -d "$dst" ]; then
     run "find \"$dst\" -type d -exec chmod 0777 {} \\;"
@@ -385,95 +253,43 @@ run "sudo systemctl enable alfred-hostname.timer"
 run "sudo systemctl enable ogm-monitor.service"
 run "sudo systemctl unmask hostapd || true"
 
-# -------- Update values (SSID, Passphrase, IP) --------------------------------
+# -------- Update values --------------------------------------------------------
 
-# Farben
-GREEN="\033[1;32m"
-RESET="\033[0m"
+run "clear"
 
-# Bildschirm löschen
-clear
+sudo="sudo "
 
-# Dateien
-HOSTAPD="${root:-}/etc/hostapd/hostapd.conf"
-NETFILE="${root:-}/etc/systemd/network/br0.network"
+function replace
+{
+	old=$1
+	name=$2
+	file=$3
 
-# Helfer: sed-escape für / und &
-_esc() { printf '%s' "$1" | sed -e 's/[\/&]/\\&/g'; }
+	echo -n "$name: [${old}]: "
+	read new
+	if [ "$new" != "" ] ; then
+		clean=${new//\//\\\/}
+		${sudo}sed -e "s/${old}/${clean}/" -i $file
+	fi
+}
 
-# Aktuelle Werte lesen (nur erste Übereinstimmung)
-CUR_SSID="$(awk -F= '/^ssid=/{print $2; exit}' "$HOSTAPD" 2>/dev/null || true)"
-CUR_PASS="$(awk -F= '/^wpa_passphrase=/{print $2; exit}' "$HOSTAPD" 2>/dev/null || true)"
-CUR_ADDR="$(awk -F= '/^Address=/{print $2; exit}' "$NETFILE" 2>/dev/null || true)"
+root=""
+line="$(grep '^ssid=' ${root}/etc/hostapd/hostapd.conf)"
+ssid=${line#ssid=}
+replace "$ssid" "Local SSID" "${root}/etc/hostapd/hostapd.conf"
 
-# IP & Präfix trennen (z. B. 192.168.1.10/24)
-CUR_IP="${CUR_ADDR%%/*}"
-CUR_CIDR="${CUR_ADDR##*/}"
-# Fallback, falls kein / vorhanden
-[ "$CUR_CIDR" = "$CUR_ADDR" ] && CUR_CIDR="24"
+line="$(grep '^wpa_passphrase=' ${root}/etc/hostapd/hostapd.conf)"
+wpa_pass=${line#wpa_passphrase=}
+replace "$wpa_pass" "Local SSID WPA password" "${root}/etc/hostapd/hostapd.conf"
 
-echo -e "${GREEN}=== Local SSID, Password and IP Configuration ===${RESET}"
-echo "Leave empty if unchanged."
-echo
+line="$(grep '^Address=' ${root}/etc/systemd/network/br0.network)"
+line=${line#Address=}
+ip_addr=${line%/24}
+replace "$ip_addr" "IP Address" "${root}/etc/systemd/network/br0.network"
 
-# Interaktiv abfragen (oder via NEW_SSID/NEW_PASS/NEW_IP/NEW_CIDR Variablen)
-read -r -p "$(echo -e "${GREEN}New Local SSID [${CUR_SSID:-unverändert}]: ${RESET}")" NEW_SSID
-read -r -p "$(echo -e "${GREEN}New SSID Password [${CUR_PASS:+*****}/unverändert]: ${RESET}")" NEW_PASS
-read -r -p "$(echo -e "${GREEN}New Node-IP (without prefix) [${CUR_IP:-unverändert}]: ${RESET}")" NEW_IP
-read -r -p "$(echo -e "${GREEN}New Prefix (CIDR, e.g. 24) [${CUR_CIDR}]: ${RESET}")" NEW_CIDR
-echo
-
-# Defaults anwenden, wenn leer gelassen
-NEW_SSID="${NEW_SSID:-$CUR_SSID}"
-NEW_PASS="${NEW_PASS:-$CUR_PASS}"
-NEW_IP="${NEW_IP:-$CUR_IP}"
-NEW_CIDR="${NEW_CIDR:-$CUR_CIDR}"
-
-# --- Minimal-Validierung
-_err=false
-[ -z "$NEW_SSID" ] && echo "WARN: SSID is empty." && _err=true
-[ -z "$NEW_PASS" ] && echo "WARN: Password is empty." && _err=true
-if [ -n "$NEW_IP" ] && ! printf '%s' "$NEW_IP" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$'; then
-  echo "ERROR: Invalid IP: $NEW_IP"; _err=true
-fi
-if ! printf '%s' "$NEW_CIDR" | grep -Eq '^[0-9]{1,2}$'; then
-  echo "ERROR: Invalid Prefix: $NEW_CIDR"; _err=true
-fi
-$_err && echo "Aborted due to input errors." && exit 1
-
-# Änderungen anwenden
-if [ -f "$HOSTAPD" ]; then
-  if grep -qE '^ssid=' "$HOSTAPD"; then
-    sed -i -E "s/^(ssid=).*/\1$(_esc "$NEW_SSID")/" "$HOSTAPD"
-  else
-    printf '\nssid=%s\n' "$NEW_SSID" | tee -a "$HOSTAPD" >/dev/null
-  fi
-
-  if grep -qE '^wpa_passphrase=' "$HOSTAPD"; then
-    sed -i -E "s/^(wpa_passphrase=).*/\1$(_esc "$NEW_PASS")/" "$HOSTAPD"
-  else
-    printf 'wpa_passphrase=%s\n' "$NEW_PASS" | tee -a "$HOSTAPD" >/dev/null
-  fi
-else
-  echo "WARN: $HOSTAPD not found – Skip changes."
-fi
-
-if [ -f "$NETFILE" ]; then
-  if grep -qE '^Address=' "$NETFILE"; then
-    sed -i -E "s/^Address=.*/Address=$(_esc "$NEW_IP")\/$NEW_CIDR/" "$NETFILE"
-  else
-    printf '\nAddress=%s/%s\n' "$NEW_IP" "$NEW_CIDR" | tee -a "$NETFILE" >/dev/null
-  fi
-else
-  echo "WARN: $NETFILE not found – Skip changes."
-fi
-
-echo -e "${GREEN}Configuration updated:${RESET}"
-echo "  SSID         : ${NEW_SSID}"
-echo "  Passphrase   : ${NEW_PASS:+(gesetzt)}"
-echo "  IP/CIDR      : ${NEW_IP}/${NEW_CIDR}"
-echo
-
+line="$(grep '^DNS=' ${root}/etc/systemd/network/br0.network)"
+dns=${line#DNS=}
+replace "$dns" "DNS (must match IP)" "${root}/etc/systemd/network/br0.network"
 
 # -------- Show Log Summary -----------------------------------------------------
 echo
