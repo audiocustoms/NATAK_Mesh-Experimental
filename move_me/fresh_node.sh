@@ -1,13 +1,33 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# FRESH NODE SETUP (NatakMesh) – safer, structured, idempotent-ish
+# FRESH NODE SETUP (OrbisMesh) – safer, structured, idempotent-ish
 # ------------------------------------------------------------------------------
 
 set -Eeuo pipefail
 
 
 # -------- Confirmation ---------------------------------------------------------
-read -r -p "This script will prepare your device to be used with NATAK Mesh. Do you want to continue? [y/N] " ans
+
+clear
+
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+echo -e "${GREEN}┌───────────────────────────────────────────────────┐${NC}"
+echo -e "${GREEN}│                                                   │${NC}"
+echo -e "${GREEN}│   ___       _     _       __  __           _      │${NC}"
+echo -e "${GREEN}│  / _ \ _ __| |__ (_)___  |  \/  | ___  ___| |__   │${NC}"
+echo -e "${GREEN}│ | | | | '__| '_ \| / __| | |\/| |/ _ \/ __| '_ \  │${NC}"
+echo -e "${GREEN}│ | |_| | |  | |_) | \__ \ | |  | |  __/\__ \ | | | │${NC}"
+echo -e "${GREEN}│  \___/|_|  |_.__/|_|___/ |_|  |_|\___||___/_| |_| │${NC}"
+echo -e "${GREEN}│                                                   │${NC}"
+echo -e "${GREEN}└───────────────────────────────────────────────────┘${NC}"
+echo ""
+echo ""
+echo ""
+echo "This script will install 'Orbis Mesh' on your system."
+echo ""
+read -r -p "Do you want to continue? [y/N] " ans
 case "$ans" in
   [Yy]*) echo "Proceeding with setup...";;
   *) echo "Aborted."; exit 1;;
@@ -198,7 +218,7 @@ LOG_TS; echo "Copying configuration files from ${MOVE_SRC} …"
 
 # User directories
 dst="${HOME}/"
-for d in mesh mesh_monitor .reticulum .nomadnet; do
+for d in mesh mesh_monitor .reticulum scripts; do
   src="${MOVE_SRC}/home/natak/${d}"
   if [ -d "$src" ]; then
     run "cp -a -v \"$src\" \"$dst\""
@@ -209,7 +229,7 @@ done
 
 # -------- Permissions ----------------------------------------------------------
 LOG_TS; echo "Setting permissions on user directories …"
-for d in mesh mesh_monitor .reticulum .nomadnet; do
+for d in mesh mesh_monitor .reticulum; do
   dst="${HOME}/${d}"
   if [ -d "$dst" ]; then
     run "find \"$dst\" -type d -exec chmod 0777 {} \\;"
@@ -286,5 +306,5 @@ if $DO_REBOOT; then
     LOG_TS; echo "Reboot skipped."
   fi
 else
-  LOG_TS; echo "Setup finished – no reboot triggered but requred!"
+  LOG_TS; echo "Setup finished – no reboot triggered but required!"
 fi
