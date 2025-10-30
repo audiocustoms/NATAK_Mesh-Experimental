@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>OrbisMesh – DHCP / Network Insights</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Typo- und Layout-Feinschliff lokal; Farben & Basis-Styles kommen aus app.css -->
+  <style>
+    :root { --fs14: 14px; }
+    .grid { display:grid; gap:12px; }
+    .grid.kpis { grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); }
+    .card { background: var(--bg-3); padding:16px; border-radius:8px; }
+    .kpi { display:flex; flex-direction:column; gap:6px; }
+    .kpi .label { font-size: var(--fs14); }
+    .kpi .value { font-size: var(--fs14); font-weight:600; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding:8px; border-bottom:1px solid var(--border); text-align:left; font-size: var(--fs14); }
+    th { color:#bbb; font-weight:600; }
+    .small { font-size: var(--fs14); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace; }
+    .muted { color:#888; }
+    /* Karten in den Grids unten bekommen denselben oberen Abstand wie andere Kartenreihen */
+    #dhcp-section .card { margin-top:12px; }
+  </style>
+
+  <script>
+    const $ = sel => document.querySelector(sel);
+    const setText = (id, val) => { const el = $(id); if (el) el.textContent = (val ?? '—'); };
+    const fmt = (v, fb='—') => (v===null || v===undefined || v==='') ? fb : v;
+
+    // -----------------------------
+    // Bridge & Netzwerkstatus
+    // -----------------------------
+    function renderNetworkStatus(nw){
+      const br = nw?.bridge || {};
+      const br0 = br.br0 || {};
+      const bat0 = br.bat0 || {};
+      setText('#kpi-bridge', `br0: ${br0.state || '—'} | bat0: ${bat0.state || '—'}`);
+
+      const members = []
+        .concat((br0.members||[]).map(m=>`br0:${m}`))
+        .concat((bat0.members||[]).map(m=>`bat0:${m}`));
+      setText('#kpi-bridge-members', members.length ? members.join(', ') : '—');
+
+      // MAC-Anteile in Klammern entfernen (z. B. "192.168.1.1 (aa:bb:...)")
+      const clean = v => (v || '').replace(/\s*\([^)]+\)/g, '').trim();
+      setText('#kpi-subnet',  clean(nw?.routes?.subnet)  || '—');
+      setText('#kpi-gateway', clean(nw?.routes?.gateway) || '—');
+    }
+
+    async function loadNetworkStatusOnce(){
+      try{
+        const r = await fetch('/api/network-status');
+        const d = await r.json();
+        renderNetworkStatus(d);
+      } catch(e){ /* silent */ }
+    }
+
+    // -----------------------------
+    // KPI & Clients-Tabelle
+    // -----------------------------
+    async function loadLeases(){
+      try{
+        const r = await fetch('/api/dhcp-leases?ts=' + Date.now());
+        const d = await r.json();
+
+        const leasesToShow = d.active_leases || d.leases || [];
+        // KPI: erst Serverwert, sonst Länge der aktiven Leases
+        const count = (d && typeof d.active_clients === 'number')
+          ? d.active_clients
+          : leasesToShow.length;
+
+        setText('#kpi-clients', count);
+      } catch (e){
+        // sichtbar degradieren statt stumm zu scheitern
+        setText('#kpi-clients', '—');
+      }
+    }
+
+    async function renderActiveLeases() {
+      const tableBody = document.querySelector('#active-table tbody');
+      if (!tableBody) return;
+
+      try {
+        const res = await fetch('/api/dhcp-leases?ts=' + Date.now());
+        const data = await res.json();
+        const list = (data && (data.active_leases || data.leases)) || [];
+
+        tableBody.innerHTML = '';
+
+        if (!list.length) {
+          tableBody.innerHTML = '<tr><td class="muted">Keine aktiven Clients</td></tr>';
+          return;
+        }
+
+        // sortiere alphabetisch nach Hostname oder IP
+        const norm = v => (v ?? '').toString().toLowerCase();
+        list.sort((a, b) =>
+          norm(a.hostname || a.host).localeCompare(norm(b.hostname || b.host)) ||
+          norm(a.ip).localeCompare(norm(b.ip))
+        );
+
+        for (const it of list) {
+          const ip   = it.ip || '';
+          const mac  = it.mac || '';
+          const host = it.hostname || it.host || '';
+
+          // Adapter bestimmen (vom Backend geliefert als adapter/iface/interface)
+          let adapterRaw = it.adapter ?? it.iface ?? it.interface ?? '';
+          let adapter = (adapterRaw || '').toString().toLowerCase();
+          if (adapter.includes('wlan') || adapter.includes('wifi') || adapter === 'wl') adapter = 'wlan';
+          else if (adapter.includes('eth') || adapter.includes('lan') || adapter.includes('br')) adapter = 'ethernet';
+          else adapter = '';
+
+          // IP + Adapter direkt zusammen darstellen
+          const ipWithAdapter = adapter ? `${ip} (${adapter})` : ip;
+
+          const info =
+            (ipWithAdapter ? `<div>${ipWithAdapter}</div>` : '') +
+            (mac ? `<div class="muted mono">${mac}</div>` : '') +
+            (host ? `<div>${host}</div>` : '');
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${info}</td>`;
+          tableBody.appendChild(tr);
+        }
+      } catch (e) {
+        tableBody.innerHTML = '<tr><td class="muted">Fehler beim Laden</td></tr>';
+      }
+    }
+
+    // -----------------------------
+    // DHCP Control (dnsmasq)
+    // -----------------------------
+    let __dhcpCfg = null;
+
+    function _dhcpUpdateUi(enabled){
+      const btn = document.querySelector('#dhcp-toggle');
+      const st  = document.querySelector('#dhcp-status');
+      const restartBtn = document.querySelector('#dhcp-restart');
+
+      if (enabled === null) {
+        if (st) st.textContent = 'Status: unknown';
+        if (btn) { btn.textContent = 'Deactivate DHCP'; btn.dataset.enabled = ''; }
+        if (restartBtn) restartBtn.style.display = 'none';
+        return;
+      }
+      if (st) st.textContent = 'Status: ' + (enabled ? 'aktive' : 'inaktive');
+      if (btn) {
+        btn.textContent = enabled ? 'Deactivate DHCP' : 'Activate DHCP';
+        btn.dataset.enabled = enabled ? '1' : '0';
+      }
+      // Neustart-Button sichtbar (falls nicht gewünscht -> display:none)
+      if (restartBtn) restartBtn.style.display = '';
+    }
+
+    async function loadDhcpConfig(){
+      const msg = document.querySelector('#dhcp-msg');
+      try{
+        const r = await fetch('/api/dhcp-config', { cache:'no-store' });
+        if (!r.ok) throw 0;
+        const d = await r.json(); // { enabled, range_start, range_end, netmask, lease }
+        __dhcpCfg = d || {};
+
+        _dhcpUpdateUi(!!d.enabled);
+        (document.querySelector('#dhcp-range-start')||{}).textContent = d.range_start || '—';
+        (document.querySelector('#dhcp-range-end')  ||{}).textContent = d.range_end   || '—';
+        (document.querySelector('#dhcp-netmask')    ||{}).textContent = d.netmask     || '255.255.255.0';
+        (document.querySelector('#dhcp-lease')      ||{}).textContent = d.lease       || '12h';
+        if (msg) msg.textContent = '';
+      } catch {
+        _dhcpUpdateUi(null);
+        if (msg) msg.textContent = 'Konnte DHCP-Konfiguration nicht laden.';
+      }
+    }
+
+    async function onDhcpToggle(){
+      const btn = document.querySelector('#dhcp-toggle');
+      const msg = document.querySelector('#dhcp-msg');
+      const enabledNow = (btn?.dataset.enabled === '1');
+
+      const confirmText = enabledNow
+        ? 'DHCP will be deactivated. Connected clients will not receive new leases.'
+        : 'DHCP will be activated?';
+      if (!confirm(confirmText)) return;
+
+      // Fallbacks aus letzter Konfiguration
+      const range_start = __dhcpCfg?.range_start || '192.168.200.100';
+      const range_end   = __dhcpCfg?.range_end   || '192.168.200.199';
+      const lease       = __dhcpCfg?.lease       || '12h';
+      const netmask     = __dhcpCfg?.netmask     || '255.255.255.0';
+
+      if (btn) btn.disabled = true;
+      if (msg) msg.textContent = 'Wird angewendet…';
+      try{
+        const r = await fetch('/api/dhcp-config', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ enabled: !enabledNow, range_start, range_end, lease, netmask })
+        });
+        const d = await r.json();
+        if (!r.ok || d.success === false) throw new Error(d.error || 'Fehler');
+
+        __dhcpCfg = { ...(d || {}), enabled: !enabledNow, range_start, range_end, lease, netmask };
+        _dhcpUpdateUi(!enabledNow);
+        if (msg) msg.textContent = d.message || (!enabledNow ? 'DHCP activated.' : 'DHCP deactivated.');
+      } catch (e){
+        if (msg) msg.textContent = 'Change failed.';
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function onDhcpRestart(){
+      const btn = document.querySelector('#dhcp-restart');
+      const msg = document.querySelector('#dhcp-msg');
+      if (!confirm('restart dnsmasq?')) return;
+
+      if (btn) btn.disabled = true;
+      if (msg) msg.textContent = 'dnsmasq restarting…';
+      try{
+        const r = await fetch('/api/restart-service', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ name:'dnsmasq' })
+        });
+        if (!r.ok) throw 0;
+        if (msg) msg.textContent = 'dnsmasq restarted.';
+      } catch {
+        if (msg) msg.textContent = 'Restart failed.';
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    // -----------------------------
+    // Start/Interval
+    // -----------------------------
+    document.addEventListener('DOMContentLoaded', () => {
+      // Netzstatus & Clients
+      loadNetworkStatusOnce();
+      loadLeases();
+      renderActiveLeases();
+
+      // regelmäßige Aktualisierung
+      setInterval(loadLeases, 5000);
+      setInterval(renderActiveLeases, 5000);
+
+      // DHCP (dnsmasq)
+      loadDhcpConfig();
+      document.querySelector('#dhcp-toggle') ?.addEventListener('click', onDhcpToggle);
+      document.querySelector('#dhcp-restart')?.addEventListener('click', onDhcpRestart);
+    });
+
+  </script>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  {% set active='dhcp-config' %}
+  {% include 'sidebar.html' %}
+
+  <main class="main" style="font-size: var(--fs14);">
+    <div class="header">
+      <div style="display:flex;flex-direction:column;align-items:flex-start;flex:1;">
+        <h1 style="margin:0;">{{ hostname }}</h1>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>DHCP Status</h2>
+      <!-- KPIs -->
+      <div class="grid kpis" style="margin-bottom:12px;">
+        <div class="card kpi">
+          <div class="label">Active Clients (DHCP)</div>
+          <div class="value hl-orange" id="kpi-clients">—</div>
+        </div>
+        <div class="card kpi">
+          <div class="label">Subnet / Gateway</div>
+          <div class="value hl-orange" id="kpi-subnet">—</div>
+          <div class="value hl-orange" id="kpi-gateway">—</div>
+        </div>
+        <div class="card kpi">
+          <div class="label">Bridge Status</div>
+          <div class="value hl-orange" id="kpi-bridge">br0: — | bat0: —</div>
+          <div class="muted small" id="kpi-bridge-members">—</div>
+        </div>
+      </div>
+
+      <!-- Clients Table -->
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <div class="label">Clients</div>
+        </div>
+        <table id="active-table">
+          <thead>
+            <tr>
+              <th>Clients (IP / MAC / Hostname)</th>
+            </tr>
+          </thead>
+          <tbody><tr><td class="muted">Lade …</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- DHCP (dnsmasq) Section – gleicher Außenabstand wie oben -->
+    <div class="section" id="dhcp-section">
+      <h2>DHCP Settings</h2>
+      <div class="grid" style="grid-template-columns: repeat(auto-fit,minmax(280px,1fr)); gap:12px;">
+
+        <!-- Karte: DHCP Status & Toggle -->
+        <div class="card" id="dhcp-card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+            <div>
+              <div class="label">DHCP (Server)</div>
+              
+            </div>
+            <div class="small muted" id="dhcp-status">Status: —</div>
+          </div>
+
+          <div class="row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <button id="dhcp-toggle" class="btn-ghost" type="button">Deactivate DHCP</button>
+            <button id="dhcp-restart" class="btn-danger" type="button" style="display:none;">Restart DHCP Service</button>
+            <span id="dhcp-msg" class="muted small" aria-live="polite"></span>
+          </div>
+        </div>
+
+        <!-- Karte: Lease-Range (nur Anzeige) -->
+        <div class="card" id="dhcp-range-card">
+          <div class="label" style="margin-bottom:8px;">Range</div>
+          <div class="small">
+            Von: <span class="mono" id="dhcp-range-start">—</span><br>
+            Bis: <span class="mono" id="dhcp-range-end">—</span><br>
+            Netmask: <span class="mono" id="dhcp-netmask">—</span><br>
+            Lease: <span class="mono" id="dhcp-lease">—</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+</body>
+</html>

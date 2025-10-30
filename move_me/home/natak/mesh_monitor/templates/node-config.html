@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>OrbisMesh – Node Config</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    .field input,.field select{ /* war: ".field input,field select" */
+    background:var(--bg); color:var(--text); border:1px solid var(--border);
+    padding:8px; border-radius:6px;
+    }
+    .btn{background:var(--brand);color:#fff;border:none;padding:8px 14px;border-radius:8px;cursor:pointer}
+    .btn.secondary{background:#444}
+    .btn:disabled{opacity:.6;cursor:not-allowed}
+    .card{background:var(--bg);padding:16px;border-radius:8px}
+    .muted{color:#888}
+  </style>
+  <script>
+    function showStatus(msg, type, id='config-status'){
+      const el=document.getElementById(id); if(!el) return;
+      el.textContent=msg; el.className='status-message status-'+type; el.style.display='block';
+      if(type!=='error') setTimeout(()=>el.style.display='none', 4000);
+    }
+
+    function loadNodeConfig(){
+    fetch('/api/node-config')
+      .then(r=>r.json())
+      .then(d=>{
+        const h1 = document.querySelector('h1');
+        if (h1) h1.textContent = d.hostname || '';
+
+        const lm = document.querySelector('.local-mac');
+        if (lm) lm.textContent = 'Local MAC: ' + (d.local_mac || '');
+
+        const host = document.getElementById('hostname');
+        if (host){
+          host.value = d.hostname || host.value || '';
+          if (!host.placeholder) host.placeholder = d.hostname || '';
+        }
+        const tz = document.getElementById('timezone');
+        if (tz) tz.value = d.timezone || tz.value || 'Europe/Berlin';
+      })
+      .catch(()=>showStatus('Konnte Node-Config nicht laden','error'));
+    }
+
+    function applyHostname(){
+      const hostname=document.getElementById('hostname').value.trim();
+      if(!hostname) return showStatus('Hostname darf nicht leer sein','error');
+      const btn=document.getElementById('btn-hostname'); btn.disabled=true;
+      fetch('/api/node-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hostname})})
+        .then(r=>r.json()).then(d=>{
+          if(d.success){ showStatus(d.message||'Hostname aktualisiert','success'); }
+          else{ showStatus(d.error||'Update fehlgeschlagen','error'); }
+          btn.disabled=false; loadNodeConfig();
+        }).catch(()=>{ showStatus('Update fehlgeschlagen','error'); btn.disabled=false; });
+    }
+
+    function applyTimezone(){
+      const timezone=document.getElementById('timezone').value;
+      const btn=document.getElementById('btn-timezone'); btn.disabled=true;
+      fetch('/api/node-config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({timezone})})
+        .then(r=>r.json()).then(d=>{
+          if(d.success){ showStatus(d.message||'Zeitzone aktualisiert','success'); }
+          else{ showStatus(d.error||'Update fehlgeschlagen','error'); }
+          btn.disabled=false;
+        }).catch(()=>{ showStatus('Update fehlgeschlagen','error'); btn.disabled=false; });
+    }
+
+    function restartService(svc){
+      if(!confirm('Service "'+svc+'" neu starten?')) return;
+      const id='status-'+svc; showStatus('Starte '+svc+' neu…','success', id);
+      fetch('/api/service',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({service:svc})})
+        .then(r=>r.json()).then(d=>{
+          showStatus(d.success?(d.message||('Service '+svc+' neu gestartet')):(d.error||'Fehler'), d.success?'success':'error', id);
+        }).catch(()=>showStatus('Fehler beim Neustart','error', id));
+    }
+
+    document.addEventListener('DOMContentLoaded', loadNodeConfig);
+  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  {% set active='node-config' %}
+  {% include 'sidebar.html' %}
+  <main class="main">
+    <div class="header">
+      <div style="display:flex;flex-direction:column;align-items:flex-start;flex:1;">
+        <h1 style="margin:0;">{{ hostname }}</h1>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Node Config</h2>
+      <div class="grid">
+        <div class="card">
+          <div class="field">
+            <label for="hostname">Hostname:</label>
+            <input id="hostname" type="text" placeholder="{{ hostname }}" />
+            <button id="btn-hostname" class="btn" onclick="applyHostname()">Apply</button>
+          </div>
+          <div id="config-status" class="status-message"></div>
+        </div>
+
+        <div class="card">
+          <div class="field">
+            <label for="timezone">Timezone:</label>
+            <select id="timezone">
+              <option>Europe/Berlin</option>
+              <option>UTC</option>
+              <option>Europe/Vienna</option>
+              <option>Europe/Zurich</option>
+            </select>
+            <button id="btn-timezone" class="btn" onclick="applyTimezone()">Apply</button>
+          </div>
+          <div id="status-timezone" class="status-message"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Services</h2>
+      <div class="grid">
+        <div class="card">
+          <div class="field">
+            <span class="muted">dnsmasq (DHCP/DNS)</span>
+            <button class="btn secondary" onclick="restartService('dnsmasq')">Restart</button>
+          </div>
+          <div id="status-dnsmasq" class="status-message"></div>
+        </div>
+        <div class="card">
+          <div class="field">
+            <span class="muted">reticulum</span>
+            <button class="btn secondary" onclick="restartService('reticulum')">Restart</button>
+          </div>
+          <div id="status-reticulum" class="status-message"></div>
+        </div>
+        <div class="card">
+          <div class="field">
+            <span class="muted">networking</span>
+            <button class="btn secondary" onclick="restartService('networking')">Restart</button>
+          </div>
+          <div id="status-networking" class="status-message"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

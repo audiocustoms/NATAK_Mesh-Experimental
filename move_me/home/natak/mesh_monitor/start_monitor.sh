@@ -19,17 +19,17 @@ export USER=natak
 # Adding equivalent waits to match working pattern
 
 echo "Waiting for system initialization (copying mesh-startup timing)..."
-sleep 5
+#sleep 1
 
 echo "Additional wait before network restart..."
-sleep 5
+#sleep 1
 
 # Restart systemd-networkd to ensure hostapd can hand out DHCP addresses
 echo "Restarting systemd-networkd for hostapd DHCP..."
 sudo systemctl restart systemd-networkd
 
 # Wait for systemd-networkd to settle
-sleep 5
+#sleep 1
 
 # Change to mesh_monitor directory
 cd /home/natak/mesh_monitor
