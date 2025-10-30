@@ -9,7 +9,7 @@ set -Eeuo pipefail
 LOG_TS() { printf '[%s] ' "$(date '+%F %T')"; }
 
 # -------- Confirmation ---------------------------------------------------------
-read -r -p "This script will enable and activate all required services for NATAK Mesh and reboot your system. Do you want to continue? [Y/N] " ans
+read -r -p "This script will enable and activate all required services for Orbis Mesh and reboot your system. Do you want to continue? [y/N] " ans
 case "$ans" in
   [Yy]*) echo "Proceeding with post-setup...";;
   *) echo "Aborted."; exit 1;;
@@ -44,6 +44,9 @@ sudo systemctl enable mesh-monitor.service
 LOG_TS; echo "Enabling mesh-startup.service …"
 sudo systemctl enable mesh-startup.service
 
+LOG_TS; echo "Enabling NetworkManager.service …"
+sudo systemctl enable NetworkManager.service
+
 # -------- Show Log Summary -----------------------------------------------------
 echo
 echo "======================================================================"
@@ -58,7 +61,7 @@ echo "======================================================================"
 echo
 
 # 4. Reboot (with confirmation)
-read -r -p "Reboot now? [Y/N] " reboot_ans
+read -r -p "Reboot now? [y/N] " reboot_ans
 case "$reboot_ans" in
   [Yy]*)
     LOG_TS; echo "Rebooting in 5 seconds …"
