@@ -1,0 +1,38 @@
+{
+  "timestamp": 1759785246,
+  "local": {
+    "mac": "da:b4:ea:10:06:4a",
+    "alfred_ok": true,
+    "hostname": "pi01",
+    "battery_present": false,
+    "power_source": "unknown"
+  },
+  "nodes": {
+    "e8:ab:fa:0a:c2:8f": {
+      "last_seen": 0.912,
+      "throughput": 234.0,
+      "nexthop": "e8:ab:fa:0a:c2:8f",
+      "signal_dbm": 1.0,
+      "rx_packets": 55477,
+      "rx_drop_misc": 1972,
+      "tx_packets": 10581,
+      "tx_retries": 8096,
+      "tx_failed": 44,
+      "tx_bitrate_mbps": 24.0,
+      "rx_bitrate_mbps": 24.0
+    },
+    "00:c1:51:11:05:f7": {
+      "last_seen": 0.396,
+      "throughput": 238.0,
+      "nexthop": "00:c1:51:11:05:f7",
+      "signal_dbm": 1.0,
+      "rx_packets": 53663,
+      "rx_drop_misc": 1733,
+      "tx_packets": 10212,
+      "tx_retries": 7884,
+      "tx_failed": 67,
+      "tx_bitrate_mbps": 11.0,
+      "rx_bitrate_mbps": 24.0
+    }
+  }
+}
