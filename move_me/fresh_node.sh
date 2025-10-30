@@ -88,7 +88,7 @@ need tee
 need awk
 need sed
 need grep
-need systemctl || true
+command -v systemctl >/dev/null 2>&1 || true
 
 LOG_TS; echo "Starting setup …"
 LOG_TS; echo "Options: reset-id=${RUN_RESET_ID}, pipx=${USE_PIPX}, reboot=${DO_REBOOT}, dry-run=${DRY_RUN}"
@@ -127,7 +127,9 @@ fi
 LOG_TS; echo "Installing system packages …"
 export DEBIAN_FRONTEND=noninteractive
 run "sudo apt-get update -y"
-run "sudo DEBIAN_FRONTEND=readline apt-get install -q -y hostapd batctl python3 python3-pip pipx aircrack-ng iperf3 ufw network-manager python3-flask"
+sudo DEBIAN_FRONTEND=readline apt-get install -y hostapd batctl wget curl
+sudo DEBIAN_FRONTEND=readline apt-get install -y python3 python3-pip pipx
+sudo DEBIAN_FRONTEND=readline apt-get install -y aircrack-ng iperf3 network-manager alfred dnsmasq python3-flask
 
 # Load batman-adv kernel module & keep it persistent
 run "sudo modprobe -v batman_adv"
@@ -195,19 +197,12 @@ if $USE_PIPX; then
 
   # Reinstall via pipx to ensure proper shims
   run "pipx uninstall rns || true"
-  run "pipx uninstall nomadnet || true"
   run "pipx install rns"
-  run "pipx install nomadnet"
 else
-  run "pip3 install --upgrade --break-system-packages rns nomadnet"
+  run "pip3 install --upgrade --break-system-packages rns"
   # fallback: extend PATH for ~/.local/bin
   run "grep -q 'HOME/.local/bin' ~/.bashrc || echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
 fi
-
-# -------- Services/Daemons -----------------------------------------------------
-LOG_TS; echo "Enabling/configuring services …"
-run "sudo systemctl enable NetworkManager.service"
-run "sudo systemctl unmask hostapd || true"
 
 # Note: consider disabling wpa_supplicant if hostapd should run exclusively in AP mode.
 # This is system-specific — intentionally NOT automated.
@@ -237,52 +232,62 @@ for d in mesh mesh_monitor .reticulum; do
 done
 
 # System directories
-run "sudo install -d /etc/hostapd /etc/modprobe.d /etc/systemd/network /etc/systemd/system /etc/wpa_supplicant"
+run "sudo install -d /etc/dnsmasq.d /etc/hostapd /etc/modprobe.d /etc/NetworkManager /etc/sudoers.d /etc/sysctl.d /etc/udev /etc/systemd/network /etc/systemd/system"
 
 # Concrete copies (only if present)
-for name in etc/hostapd etc/modprobe.d etc/systemd/network etc/systemd/system etc/wpa_supplicant; do
+for name in etc/dnsmasq.d etc/hostapd etc/modprobe.d etc/NetworkManager etc/sudoers.d etc/sysctl.d etc/udev etc/systemd/network etc/systemd/system; do
   if test -d "${MOVE_SRC}/${name}"; then
-    run "sudo cp -v ${MOVE_SRC}/${name}/* /${name}/"
+    run "sudo cp -a ${MOVE_SRC}/${name}/* /${name}/"
   else
     LOG_TS; echo "Skipping: ${MOVE_SRC}/${name} not found."
   fi
 done
 
+# -------- Services/Daemons -----------------------------------------------------
+LOG_TS; echo "Enabling/configuring services …"
+run "sudo systemctl enable NetworkManager.service"
+run "sudo systemctl enable dnsmasq"
+run "sudo systemctl enable alfred.service"
+run "sudo systemctl enable alfred-hostname.timer"
+run "sudo systemctl enable ogm-monitor.service"
+run "sudo systemctl unmask hostapd || true"
+
 # -------- Update values --------------------------------------------------------
+
+run "clear"
 
 sudo="sudo "
 
-function replace
-{
-	old=$1
-	name=$2
-	file=$3
+replace() {
+  old="$1"
+  name="$2"
+  file="$3"
 
-	echo -n "$name: [${old}]: "
-	read new
-	if [ "$new" != "" ] ; then
-		clean=${new//\//\\\/}
-		${sudo}sed -e "s/${old}/${clean}/" -i $file
-	fi
+  echo -n "$name: [${old}]: "
+  read -r new
+  if [ -n "$new" ]; then
+    clean=${new//\//\\\/}
+    ${sudo}sed -e "s/${old}/${clean}/" -i "$file"
+  fi
 }
 
 root=""
 line="$(grep '^ssid=' ${root}/etc/hostapd/hostapd.conf)"
 ssid=${line#ssid=}
-replace "$ssid" "SSID" "${root}/etc/hostapd/hostapd.conf"
+replace "$ssid" "Local SSID" "${root}/etc/hostapd/hostapd.conf"
 
 line="$(grep '^wpa_passphrase=' ${root}/etc/hostapd/hostapd.conf)"
 wpa_pass=${line#wpa_passphrase=}
-replace "$wpa_pass" "WPA pass phrase" "${root}/etc/hostapd/hostapd.conf"
+replace "$wpa_pass" "Local SSID WPA password" "${root}/etc/hostapd/hostapd.conf"
 
 line="$(grep '^Address=' ${root}/etc/systemd/network/br0.network)"
 line=${line#Address=}
 ip_addr=${line%/24}
-replace "$ip_addr" "IP address" "${root}/etc/systemd/network/br0.network"
+replace "$ip_addr" "IP Address" "${root}/etc/systemd/network/br0.network"
 
 line="$(grep '^DNS=' ${root}/etc/systemd/network/br0.network)"
 dns=${line#DNS=}
-replace "$dns" "DNS" "${root}/etc/systemd/network/br0.network"
+replace "$dns" "DNS (must match IP)" "${root}/etc/systemd/network/br0.network"
 
 # -------- Show Log Summary -----------------------------------------------------
 echo
