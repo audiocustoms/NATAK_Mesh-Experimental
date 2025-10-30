@@ -1,0 +1,13 @@
+[Unit]
+Description=Enhanced OGM Monitor
+After=sys-subsystem-net-devices-bat0.device
+
+[Service]
+Type=simple
+WorkingDirectory=/home/natak/mesh/ogm_monitor
+ExecStart=/usr/bin/python3 /home/natak/mesh/ogm_monitor/enhanced_ogm_monitor.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
