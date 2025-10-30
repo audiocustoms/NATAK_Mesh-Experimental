@@ -1,0 +1,10 @@
+[Unit]
+Description=Republish hostname to alfred every 5 min
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=5min
+Unit=alfred-hostname.service
+
+[Install]
+WantedBy=timers.target

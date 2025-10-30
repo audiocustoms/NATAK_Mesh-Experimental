@@ -1,0 +1,18 @@
+[Unit]
+Description=ALFRED primary on bat0
+After=sys-subsystem-net-devices-bat0.device
+Wants=sys-subsystem-net-devices-bat0.device
+# BindsTo ensures alfred is stopped if the device disappears and makes the
+# dependency explicit (useful when bat0 is created/removed dynamically).
+BindsTo=sys-subsystem-net-devices-bat0.device
+
+# warte kurz, bis bat0 existiert (z. B. durch dein batmesh.sh)
+# wenn du einen eigenen Service für das Mesh hast, trag ihn bei After= ein
+[Service]
+Type=simple
+ExecStart=/usr/sbin/alfred -i bat0 -m
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

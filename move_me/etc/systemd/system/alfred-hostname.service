@@ -1,0 +1,8 @@
+[Unit]
+Description=Publish hostname to alfred (type 64)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'echo -n "$(hostname)" | /usr/sbin/alfred -s 64'
+
