@@ -1,8 +1,11 @@
 # /etc/systemd/system/mesh-startup.service
 [Unit]
 Description=Mesh Network and Monitor (startup_sequence.sh wrapper)
-After=local-fs.target systemd-modules-load.service network-online.target
-Wants=network-online.target
+# Depend on the network daemon rather than network-online.target to avoid
+# being blocked by long-running wait-online services. Services that truly
+# require a configured IP should depend on network-online.target explicitly.
+After=local-fs.target systemd-modules-load.service systemd-networkd.service
+Wants=systemd-networkd.service
 
 [Service]
 Type=oneshot
@@ -11,11 +14,9 @@ RemainAfterExit=yes
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Falls /home separat gemountet ist
 WorkingDirectory=/home/natak
-# buffer
-ExecStartPre=/bin/sleep 3
 ExecStart=/home/natak/mesh/startup_sequence.sh
-# 60s auf Mesh-Join warten
-TimeoutStartSec=180
+# 60s auf Mesh-Join warten (reduziert von 180s)
+TimeoutStartSec=60
 StandardOutput=journal
 StandardError=journal
 
