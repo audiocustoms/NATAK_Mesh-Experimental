@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>OrbisMesh – Mesh Config</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- 1) STYLE -->
+  <style>
+    /* Basis, an connections.html angelehnt – nutzt Variablen aus app.css */
+    *{ box-sizing:border-box }
+
+    /* Layout wird aus app.css übernommen (body, header, section, etc.) */
+
+    .content{ display:grid; gap:16px }
+
+    /* === Grids in der Section – gleiche Farbe wie in connections.html === */
+    .grid{
+      background:var(--bg-3);   /* dunkleres Panel wie in connections.html */
+      
+      border-radius:12px;       /* interne Panels leicht kleiner gerundet */
+      padding:14px;
+    }
+    .grid + .grid{ margin-top:12px; }
+
+    /* Typo & Form – app.css liefert die Basis, hier nur Ergänzungen falls nötig */
+    .host-title{ margin:0 0 8px 0; font-size:18px; font-weight:700 }
+    .stats{ font-size:14px; margin:8px 0 }
+    .mono{ font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+    .muted{ color:var(--muted) }
+    .form-row{ margin:12px 0 }
+    .form-row label{ display:block; font-size:13px; color:var(--muted); margin-bottom:6px }
+    .row{ display:flex; margin-top:8px; gap:8px; align-items:center; flex-wrap:wrap }
+
+    .input,.select{
+      background:#111; color:#fff; border:1px solid var(--border);
+      border-radius:10px; padding:8px 10px; min-width:240px; outline:none;
+    }
+    .input:focus,.select:focus{ border-color:#666 }
+
+    .status-message{ margin-top:10px; font-size:14px }
+    .status-message.good{ color:#8bc34a }
+    .status-message.bad{ color:#ef5350 }
+    
+
+    @media (max-width: 720px){
+      .main{ padding:16px 12px 24px 12px }
+    }
+  </style>
+
+  <!-- 2) SCRIPT -->
+  <script>
+    // ==== Fallback-Mapping wie in der alten Seite: Kanal -> Frequenz (MHz) ====
+    const WIFI_CHANNELS = {
+      1:2412, 2:2417, 3:2422, 4:2427, 5:2432, 6:2437, 7:2442,
+      8:2447, 9:2452, 10:2457, 11:2462, 12:2467, 13:2472, 14:2484
+    };
+
+    // Utils
+    const qs  = s => document.querySelector(s);
+    const put = (el, txt) => { if (el) el.textContent = txt; };
+    const show = (msg, ok=true) => {
+      const box = qs('#status');
+      if (!box) return;
+      box.textContent = msg || '';
+      box.classList.remove('good','bad');
+      box.classList.add(ok ? 'good' : 'bad');
+    };
+
+    // Initial laden (SSID & Channels)
+    async function loadInitial() {
+      try {
+        // SSID
+        try {
+          const r = await fetch('/api/wifi-ssid', { cache:'no-store' });
+          if (r.ok) {
+            const { ssid } = await r.json();
+            put(qs('#current-ssid'), ssid || '—');
+          }
+        } catch {}
+
+        // Channels (bestehender Endpoint) + Frequency
+        const rc = await fetch('/api/mesh-config', { cache:'no-store' });
+        if (rc.ok) {
+          const data = await rc.json();
+          const cur  = data.current_channel;
+          const fq   = data.current_frequency;
+          put(qs('#current-channel'),   cur!=null ? String(cur) : '—');
+          put(qs('#current-frequency'), fq!=null  ? String(fq)  : '—');
+
+          const sel = qs('#channel-select');
+          sel.innerHTML = '';
+
+          // Fall A: Backend liefert Map { ch: freq } -> "ch (freq MHz)"
+          if (data.available_channels && !Array.isArray(data.available_channels)) {
+            Object.entries(data.available_channels).forEach(([ch, freq]) => {
+              const opt = document.createElement('option');
+              opt.value = ch;
+              opt.textContent = `${ch} (${freq} MHz)`;
+              if (Number(ch) === Number(cur)) opt.selected = true;
+              sel.appendChild(opt);
+            });
+          } else {
+            // Fall B: Backend liefert Liste -> Mapping verwenden wie in der alten Datei
+            (data.available_channels || []).forEach(ch => {
+              const freq = WIFI_CHANNELS[ch];
+              const opt = document.createElement('option');
+              opt.value = ch;
+              opt.textContent = freq ? `${ch} (${freq} MHz)` : String(ch);
+              if (Number(ch) === Number(cur)) opt.selected = true;
+              sel.appendChild(opt);
+            });
+          }
+        }
+      } catch {
+        show('Fehler beim Laden initialer Werte', false);
+      }
+    }
+
+    // Actions
+    async function applySsid() {
+      const val = qs('#ssid-input').value.trim();
+      if (!val) { show('Bitte SSID eingeben', false); return; }
+      try {
+        const r = await fetch('/api/wifi-ssid', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ ssid: val })
+        });
+        if (!r.ok) throw 0;
+        put(qs('#current-ssid'), val);
+        show('SSID gesetzt. Bitte Dienst neu starten.');
+      } catch {
+        show('Konnte SSID nicht setzen', false);
+      }
+    }
+
+    async function applyPsk() {
+      const val = qs('#psk-input').value;
+      if (!val) { show('Bitte Passwort eingeben', false); return; }
+      try {
+        const r = await fetch('/api/wifi-psk', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ psk: val })
+        });
+        if (!r.ok) throw 0;
+        qs('#psk-input').value = '';
+        show('Passwort gesetzt. Bitte Dienst neu starten.');
+      } catch {
+        show('Konnte Passwort nicht setzen', false);
+      }
+    }
+
+    // Channel setzen – alter then()-Flow mit Channel+Frequency-Update
+    function applyChannel(){
+      const select = document.getElementById('channel-select');
+      const btn    = document.getElementById('apply-channel');
+      const selected = Number(select.value);
+
+      if (!Number.isFinite(selected)) {
+        show('Bitte Kanal wählen', false);
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Applying…';
+
+      fetch('/api/mesh-config', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ channel: selected })
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          show(d.message || 'Channel changed. Reboot required.', true);
+          document.getElementById('current-channel').textContent   = d.channel;
+          document.getElementById('current-frequency').textContent = d.frequency;
+        } else {
+          show(d.error || 'Failed to change channel', false);
+        }
+      })
+      .catch(() => {
+        show('Failed to change channel', false);
+      })
+      .finally(() => {
+        btn.disabled = false;
+        btn.textContent = 'Apply Channel';
+      });
+    }
+
+    async function restartNetworking() {
+      try {
+        const r = await fetch('/api/restart-service', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ name:'networking' })
+        });
+        if (!r.ok) throw 0;
+        show('networking neu gestartet.');
+      } catch {
+        show('Neustart networking fehlgeschlagen', false);
+      }
+    }
+
+    // Bindings
+    window.addEventListener('DOMContentLoaded', () => {
+      loadInitial();
+      qs('#apply-ssid')   ?.addEventListener('click', applySsid);
+      qs('#apply-psk')    ?.addEventListener('click', applyPsk);
+      qs('#apply-channel')?.addEventListener('click', applyChannel);
+      qs('#restart-net')  ?.addEventListener('click', restartNetworking);
+    });
+  </script>
+
+  <!-- 3) APP.CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+
+<body>
+  {% set active = 'mesh-config' %}
+  {% include 'sidebar.html' %}
+
+  <!-- Body HTML mit div-Klassen wie in connections.html -->
+  <main class="main">
+    <!-- Header wie in deiner alten mesh-config -->
+    <div class="header">
+      <div style="display:flex;flex-direction:column;align-items:flex-start;flex:1;">
+        <h1 style="margin:0;">{{ hostname }}</h1>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- SECTION (statt node-card) -->
+      <div class="section">
+        <h3 class="host-title">OrbisMesh Configuration</h3>
+
+        <!-- GRID 1: SSID / Passwort -->
+        <div class="grid">
+          <!-- Current SSID -->
+          <div class="stats">
+            <strong>Current SSID:</strong> <span id="current-ssid" class="mono hl-orange">—</span>
+          </div>
+
+          <!-- Change SSID -->
+          <div class="form-row">
+            <label for="ssid-input">Change SSID</label>
+            <div class="row">
+              <input id="ssid-input" class="input" type="text" placeholder="New SSID (8-32 characters)" />
+            </div>
+            <!-- Button eine Zeile darunter -->
+            <div class="row">
+              <button id="apply-ssid" class="btn-ghost" type="button">Apply SSID</button>
+            </div>
+          </div>
+
+          <!-- Change SSID Password -->
+          <div class="form-row">
+            <label for="psk-input">Change SSID Password</label>
+            <div class="row">
+              <input id="psk-input" class="input" type="password" placeholder="New Password" />
+            </div>
+            <!-- Button eine Zeile darunter -->
+            <div class="row">
+              <button id="apply-psk" class="btn-ghost" type="button">Apply Password</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- GRID 2: Channel + Frequency -->
+        <div class="grid">
+          <!-- Current Channel -->
+          <div class="stats">
+            <strong>Current Orbis Mesh Channel:</strong>
+                <span id="current-channel" class="mono hl-orange">{{ current_channel }}</span>
+                (<span id="current-frequency">{{ current_frequency }}</span> MHz)
+          </div>
+
+          <!-- Select Channel -->
+          <div class="form-row">
+            <label for="channel-select">Select Channel</label>
+            <div class="row">
+              <select id="channel-select" class="select"></select>
+            </div>
+            <!-- Button eine Zeile darunter -->
+            <div class="row">
+              <button id="apply-channel" class="btn-ghost" type="button">Apply Channel</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- GRID 3: Restart -->
+        <div class="grid">
+          <div class="form-row">
+            <div class="row">
+              <!-- Rot-Button kommt aus app.css (.btn-danger) -->
+              <button id="restart-net" class="btn-danger" type="button">Reboot Network</button>
+            </div>
+          </div>
+          <div id="status" class="status-message" aria-live="polite"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

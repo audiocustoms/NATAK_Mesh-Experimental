@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>OrbisMesh – Node Info</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+
+  <style>
+    /* Grid */
+    .kv {
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      gap: 6px;
+    }
+    @media (max-width: 720px) {
+      
+      .kv { grid-template-columns: 1fr; }
+      .kv > .muted { margin-top: 10px; }
+      .kv > .muted:first-child { margin-top: 0; }
+    }
+
+    /* Typografie */
+    
+    .node-card { font-size: 14px; line-height: 1.4; color: white; }
+
+    /* Labels orange */
+    .kv .muted.hl-orange {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    /* Mini-Balken */
+    .meter {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .meter .signal { margin-top: 0; gap: 6px; display: flex; align-items: center; flex-wrap: wrap; }
+    .meter .signal-bar { width: 140px; height: 6px; flex-shrink: 0; }
+    .meter .signal-label { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+    /* Load: drei Balken untereinander, praktisch bündig */
+    .meter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0px; /* minimalster Abstand */
+      margin-top: 4px;
+    }
+
+    /* Farbverlauf der Balken */
+    .signal-bar {
+      background: linear-gradient(90deg, var(--brand) 0%, #f9a825 50%, #c62828 100%);
+    }
+
+    /* Memory/Storage: Label unter Balken */
+    .meter.vertical {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+    }
+  </style>
+
+  <script>
+    function loadInfo(){
+      fetch('/api/node-info?ts=' + Date.now())
+      .then(r=>r.json())
+      .then(d=>{
+        const H1 = document.querySelector('h1');
+        if (H1) H1.textContent = d.hostname || '';
+
+        const el = id => document.getElementById(id);
+
+        // Basiswerte
+        el('os').textContent     = d.os || '';
+        el('kernel').textContent = d.kernel || '';
+        el('uptime').textContent = d.uptime || '';
+        el('ip').innerHTML       = (d.ipv4 || []).map(x => `<div>${x}</div>`).join('');
+
+        // Zusätze / Versionen
+        el('local_mac').textContent         = d.local_mac || '';
+        el('app_version').textContent       = d.app_version || '';
+        el('flask_version').textContent     = d.flask_version || '';
+        el('python_version').textContent    = d.python_version || '';
+        el('reticulum_version').textContent = d.reticulum_version || '';
+        el('batman_version').textContent    = d.batman_version || '';
+        el('alfred_version').textContent    = d.alfred_version || '';
+
+        /* ===== Balken-Grafiken befüllen ===== */
+        const clamp = (v, min=0, max=100)=>Math.max(min, Math.min(max, Math.round(v)));
+        const setBar = (barId, lblId, pct, text)=>{
+          const bar = document.getElementById(barId);
+          const lbl = document.getElementById(lblId);
+          if (bar) bar.style.setProperty('--pct', clamp(pct));
+          if (lbl) lbl.textContent = text;
+        };
+        const parsePercent = (s)=>{
+          const m = String(s||'').match(/(\d{1,3})\s*%/);
+          return m ? clamp(Number(m[1])) : null;
+        };
+
+        const _UNIT = { b:1, kb:1e3, mb:1e6, gb:1e9, tb:1e12, kib:1024, mib:1024**2, gib:1024**3, tib:1024**4 };
+        function _toBytes(num, unitRaw){
+          const u = String(unitRaw||'').toLowerCase().replace(/\s+/g,'');
+          if (!u) return num;
+          if (u==='g') return num*_UNIT.gb;
+          if (u==='m') return num*_UNIT.mb;
+          if (u==='k') return num*_UNIT.kb;
+          if (_UNIT[u]!=null) return num*_UNIT[u];
+          return num;
+        }
+        function _extractUsedTotal(s){
+          if (!s) return null;
+          const rx = /(\d+(?:\.\d+)?)\s*([KMGT]?i?B?)\s*(?:\/|of|von|used)?[^0-9]+(\d+(?:\.\d+)?)\s*([KMGT]?i?B?)/i;
+          const m = String(s).match(rx);
+          if (!m) return null;
+          const used  = _toBytes(parseFloat(m[1]), m[2]);
+          const total = _toBytes(parseFloat(m[3]), m[4]);
+          if (!isFinite(used) || !isFinite(total) || total<=0) return null;
+          return { used, total };
+        }
+        function _fmtBytes(n){
+          if (!isFinite(n)) return '—';
+          const th = 1024;
+          if (n >= th**4) return (n/(th**4)).toFixed(1)+' TiB';
+          if (n >= th**3) return (n/(th**3)).toFixed(1)+' GiB';
+          if (n >= th**2) return (n/(th**2)).toFixed(1)+' MiB';
+          if (n >= th)    return (n/th).toFixed(1)+' KiB';
+          return Math.round(n)+' B';
+        }
+        function _computePctFromString(s){
+          const p = parsePercent(s);
+          if (p!=null) return { pct:p, label: `${p}%` };
+          const ut = _extractUsedTotal(s);
+          if (ut){
+            const pct = Math.max(0, Math.min(100, Math.round(ut.used/ut.total*100)));
+            return { pct, label: `${_fmtBytes(ut.used)} / ${_fmtBytes(ut.total)} (${pct}%)` };
+          }
+          return null;
+        }
+
+        // LOAD
+        (function(){
+          const nums = String(d.load||'').match(/-?\d+(?:\.\d+)?/g)||[];
+          const [l1,l5,l15] = [Number(nums[0]), Number(nums[1]), Number(nums[2])];
+          const denom = 2.0;
+          const p1 = Number.isFinite(l1) ? clamp((l1/denom)*100) : 0;
+          const p5 = Number.isFinite(l5) ? clamp((l5/denom)*100) : 0;
+          const p15= Number.isFinite(l15)? clamp((l15/denom)*100): 0;
+          setBar('load1_bar','load1_lbl', p1, `${l1?.toFixed(2) ?? '—'}`);
+          setBar('load5_bar','load5_lbl', p5, `${l5?.toFixed(2) ?? '—'}`);
+          setBar('load15_bar','load15_lbl',p15,`${l15?.toFixed(2) ?? '—'}`);
+        })();
+
+        // MEMORY
+        (function(){
+          const parsed = _computePctFromString(d.memory);
+          const pUsed  = parsed ? parsed.pct : 0;
+          const label  = parsed ? parsed.label : '—';
+          const fill = 100 - pUsed;
+          setBar('mem_bar','mem_lbl', fill, label);
+        })();
+
+        // DISK
+        (function(){
+          const parsed = _computePctFromString(d.disk);
+          const pUsed  = parsed ? parsed.pct : 0;
+          const label  = parsed ? parsed.label : '—';
+          const fill = 100 - pUsed;
+          setBar('disk_bar','disk_lbl', fill, label);
+        })();
+
+      }).catch(()=>{});
+    }
+
+    document.addEventListener('DOMContentLoaded', ()=>{
+      loadInfo();
+      setInterval(loadInfo, 1000); // aktualisiert jede Sekunde
+    });
+  </script>
+</head>
+<body>
+  {% set active='node-info' %}
+  {% include 'sidebar.html' %}
+
+  <main class="main">
+    <div class="header">
+      <div style="display:flex;flex-direction:column;align-items:flex-start;flex:1;">
+        <h1 style="margin:0;">{{ hostname }}</h1>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Node Info</h2>
+
+      <div class="node-grid">
+        <!-- System / Ressourcen -->
+        <div class="node-card">
+          <div class="kv">
+            <div class="muted hl-orange">OS</div><div id="os"></div>
+            <div class="muted hl-orange">Kernel</div><div id="kernel"></div>
+            <div class="muted hl-orange">Uptime</div><div id="uptime"></div>
+
+            <div class="muted hl-orange">Load</div>
+            <div>
+              <div class="meter-group">
+                <div class="meter"><div class="signal"><div class="signal-bar" id="load1_bar"><div class="signal-mask"></div></div><div class="signal-label" id="load1_lbl">—</div></div></div>
+                <div class="meter"><div class="signal"><div class="signal-bar" id="load5_bar"><div class="signal-mask"></div></div><div class="signal-label" id="load5_lbl">—</div></div></div>
+                <div class="meter"><div class="signal"><div class="signal-bar" id="load15_bar"><div class="signal-mask"></div></div><div class="signal-label" id="load15_lbl">—</div></div></div>
+              </div>
+            </div>
+
+            <div class="muted hl-orange">Memory</div>
+            <div>
+              <div class="meter vertical">
+                <div class="signal"><div class="signal-bar" id="mem_bar"><div class="signal-mask"></div></div></div>
+                <div class="signal-label" id="mem_lbl">—</div>
+              </div>
+            </div>
+
+            <div class="muted hl-orange">Storage (free)</div>
+            <div>
+              <div class="meter vertical">
+                <div class="signal"><div class="signal-bar" id="disk_bar"><div class="signal-mask"></div></div></div>
+                <div class="signal-label" id="disk_lbl">—</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Netzwerk / Identität -->
+        <div class="node-card">
+          <div class="kv">
+            <div class="muted hl-orange">Local MAC</div><div id="local_mac"></div>
+            <div class="muted hl-orange">IPv4</div><div id="ip"></div>
+          </div>
+        </div>
+
+        <!-- Software-Versionen -->
+        <div class="node-card" style="grid-column:1/-1;">
+          <div class="kv">
+            <div class="muted hl-orange">OrbisMesh Version</div><div id="app_version">{{ app_version }}</div>
+            <div class="muted hl-orange">Flask</div><div id="flask_version">{{ flask_version }}</div>
+            <div class="muted hl-orange">Python</div><div id="python_version">{{ python_version }}</div>
+            <div class="muted hl-orange">Reticulum</div><div id="reticulum_version"></div>
+            <div class="muted hl-orange">batman-adv</div><div id="batman_version"></div>
+            <div class="muted hl-orange">ALFRED</div><div id="alfred_version"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="config-status" class="status-message" aria-live="polite"></div>
+  </main>
+</body>
+</html>

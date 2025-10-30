@@ -1,0 +1,271 @@
+/* ==== Variablen (aus connections.html konsolidiert) ==== */
+:root{
+  --bg:#1a1a1a;
+  --bg-2:#2d2d2d;
+  --bg-3:#111;
+  --text:#fff;
+  --text2:#4caf50;
+  --muted:#888;
+  --brand:#4caf50;
+  --danger:#f44336;
+  --border:#444;
+  --border2:#4caf50;
+  --sidebar-w:260px;
+  --sidebar-w-collapsed:76px;
+  
+  --fs-title: 1.5rem;
+  --fs-subtitle: 1.125rem;
+  --fs-body: 0.9375rem;
+  --fs-muted: 0.875rem;
+}
+
+/* ==== Basis / Schrift ==== */
+*{ box-sizing:border-box }
+html,body{ height:100% }
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  display:flex;
+  min-height:100vh;
+}
+a{ color:inherit; text-decoration:none }
+
+/* ==== Layout-Grundgerüst ==== */
+.main{
+  flex:1;
+  min-width:0;
+  padding:16px;
+  display:flex;
+  flex-direction:column;
+  gap:24px;
+}
+.header{
+  display:flex;
+  justify-content:space-between;
+  align-items:stretch;
+  gap:12px;
+}
+.section{
+  background:var(--bg-2);
+  padding:16px;
+  border-radius:8px;
+  margin:0;
+}
+
+/* ==== Typografie / Größen ==== */
+h1,h2,h3{ margin:0 0 8px 0 }
+h1{ font-size:24px; line-height:1.2 }
+h2{ font-size:18px; line-height:1.3 }
+h3{ font-size:16px; line-height:1.3 }
+small,.muted{ color:var(--muted) }
+code, pre{ font-family:inherit }
+.hl-orange{
+  color: var(--accent-orange, #ff9800); /* fallback: kräftiges Orange */
+  font-weight: 700;
+}
+
+/* ==== Status-Meldungen ==== */
+.status-message{
+  display:none;
+  margin-top:10px;
+  padding:8px 12px;
+  border-radius:6px;
+  background:#333;
+  color:#fff;
+}
+.status-success{ background:#2e7d32; color:#fff }
+.status-error{ background:#c62828; color:#fff }
+
+/* ==== Signal strength (Connections) ==== */
+.signal{ display:flex; align-items:center; gap:8px; margin-top:6px }
+.signal-bar{
+  position: relative;
+  width: 120px;
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+
+  /* festes Farbbild: rot -> gelb -> grün bleibt immer gleich */
+  background: linear-gradient(90deg, #c62828 0%, #f9a825 50%, var(--brand) 100%);
+}
+.signal-mask{
+  position: absolute;
+  top: 0; bottom: 0; right: 0;
+  /* 100% - PCT% => verdecke den rechten Anteil */
+  width: calc(100% - var(--pct, 0) * 1%);
+  background: var(--bg-3);            /* gleiche Farbe wie Kartenhintergrund innen */
+  transition: width 200ms linear;     /* smooth update */
+}
+.signal-fill{ position:absolute; left:0; top:0; bottom:0; width:0% }
+.signal-label{ font-size:12px; color:var(--muted) }
+.mono{ font-variant-numeric: tabular-nums; }
+
+.node-card .signal { 
+  margin-bottom: 12px;
+}
+.node-card .signal-fill{
+  background: linear-gradient(90deg, #c62828, #f9a825, var(--brand));
+}
+
+.node-subtitle{
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* Optik für den Platzhalter */
+.node-subtitle.placeholder{
+  opacity: .8;
+  font-style: italic;
+}
+
+.stats-compact{
+  line-height: 1.3;
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
+
+/* RX/TX grid */
+.grid-rt{
+  display:grid;
+  grid-template-columns: 1fr;
+  gap: 8px 20px;
+  margin-top:8px;
+}
+.grid-rt div > div { line-height:1.3; }
+.grid-rt strong { font-weight:600; }
+
+.node-grid{
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.node-grid .node-card{
+  background: var(--bg-3);              /* dunkler Kasten */
+  /*border: 1px solid var(--border);*/
+  border-radius: 10px;
+  padding: 12px 14px;
+  /*box-shadow: 0 1px 2px rgba(0,0,0,.25);*/
+}
+
+/* Inaktive Karte bleibt erkennbar, aber ohne alles „auszuwaschen“ */
+.node-grid .node-card.inactive{
+  background: #161616;
+  color: #666;
+  /* statt globaler Opacity (die auch Inhalte verblasst) etwas transparenter Rand */
+  /*border-color: #2a2a2a;*/
+  filter: saturate(0.8) brightness(0.9);
+}
+
+/* Hostname-Platzhalter leicht absetzen */
+.host-title.placeholder{
+  opacity:.85;
+  
+}
+
+/* MAC unter dem Hostnamen kursiv UND mit extra Abstand nach unten */
+.node-subtitle.mac{
+  font-style: italic;
+  margin-bottom: 10px;  /* mehr Platz zur folgenden Zeile */
+}
+
+/* Kopf in der Local-Card etwas dichter zusammenrücken */
+.node-card.local .host-title{
+  margin: 0;           /* Überschriften ohne Standardabstand */
+}
+.node-card.local .host-title + .host-title{
+  margin-top: 2px;     /* kleiner Abstand zwischen 'Local Node' und Hostname */
+}
+
+/* Batterie-Balken (bleibt wie zuvor) */
+.battery-bar{
+  position: relative;
+  width: 120px;
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: linear-gradient(90deg, #c62828 0%, #f9a825 50%, var(--brand) 100%);
+}
+.battery-mask{
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: calc(100% - var(--pct, 0) * 1%);
+  background: var(--bg-3);
+  transition: width 200ms linear;
+}
+
+/* Health-Liste: unter der Batterie, vertikal */
+.node-card.local .svc-list{
+  display: flex;
+  flex-direction: column !important;  /* falls irgendwo row gesetzt war */
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* Jedes Item ist ein Block mit Punkt + Text */
+.node-card.local .svc-item{
+  display: flex;              /* block + flex für sauberes Alignment */
+  align-items: center;
+  gap: 8px;
+}
+
+/* Punkte: exakt wie Status-Indikatoren, ohne Blur-Filter */
+.node-card.local .svc-item .status-indicator{
+  margin-right: 2px;
+  filter: none !important;
+  backdrop-filter: none !important;
+}
+
+.svc-dot.ok  { background: var(--status-ok,  #22c55e); }  /* fallback: grün */
+.svc-dot.bad { background: var(--status-bad, #ef4444); }  /* fallback: rot  */
+
+.btn-danger {
+  background: var(--danger, #d32f2f);
+  color: #fff;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: filter .15s ease, background .15s ease;
+}
+.btn-danger:hover {
+  filter: brightness(1.1);
+}
+
+.btn,.btn-ghost{
+  border-radius:12px; border:1px solid var(--border); padding:8px 12px; cursor:pointer;
+  background:#4caf50; color:#fff; font-weight:600;
+  transition:filter .15s ease, background .15s ease, border-color .15s ease;
+}
+.btn{ background:#388e3c; border-color:#388e3c }
+.btn:hover{ filter:brightness(1.05) }
+.btn-ghost:hover{ background:#388e3c }
+
+.hl-orange{ color: var(--accent-orange, #ff9800); font-weight:700; text-shadow: 0 0 6px rgba(255,152,0,0.35); }
+
+
+/* ==== Media Queries (wie in connections.html) ==== */
+@media (max-width: 720px){
+  /* Sidebar wird durch sidebar.html geregelt;
+     hier nur Main-Padding wie in deiner Vorlage */
+  .main{
+    padding: 16px 12px 24px calc(var(--sidebar-w-collapsed) + 12px);
+  }
+}
+@media (min-width: 721px){
+  .main{
+    padding:16px 24px 24px 24px;
+  }
+}

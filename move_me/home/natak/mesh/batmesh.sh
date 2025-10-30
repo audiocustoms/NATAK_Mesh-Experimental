@@ -7,7 +7,7 @@ IF="wlan1"
 MESH_SSID="natak_mesh"
 FREQ=2462           # wifi channel (standard channel is 11)
 REG="US"	    # wifi region
-WAIT_PEER=60        # seconds, wait for mesh-peer
+WAIT_PEER=5        # seconds, wait for mesh-peer (reduced during boot to avoid long blocking)
 BRIDGE_NAME="br0"   # bridge name
 
 ts(){ date +'%F %T'; }
@@ -49,7 +49,7 @@ if ip link show "${BRIDGE_NAME}" >/dev/null 2>&1; then
 fi
 
 # Optional: wait for peer (just info)
-log "[wait] wait for ${WAIT_PEER}s mesh-peer…"
+log "[wait] wait for ${WAIT_PEER}s mesh-peer"
 for i in $(seq "${WAIT_PEER}"); do
   if iw dev "${IF}" station dump | grep -q "^Station "; then
     log "[ok] minimum one mesh-peer available"

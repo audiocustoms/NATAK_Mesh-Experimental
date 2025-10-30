@@ -1,192 +1,299 @@
 <!DOCTYPE html>
-<html>
+<html lang="de">
 <head>
-    <title>Mesh Monitor</title>
-    <!-- Removed meta refresh, using AJAX instead -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        :root {
-            --background-color: #1a1a1a;
-            --text-color: #ffffff;
-            --card-background: #2d2d2d;
-        }
-
-        body {
-            font-family: monospace;
-            margin: 0;
-            padding: 16px;
-            background-color: var(--background-color);
-            color: var(--text-color);
-        }
-
-        .section {
-            background-color: var(--card-background);
-            padding: 16px;
-            border-radius: 8px;
-            margin-bottom: 24px;
-        }
-
-        .node-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 16px;
-        }
-
-        .node-card {
-            background-color: var(--background-color);
-            padding: 16px;
-            border-radius: 4px;
-        }
-
-        .mode-wifi {
-            color: #4caf50;
-        }
-
-        .mode-lora {
-            color: #ff9800;
-        }
-
-        .peer-list {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 16px;
-        }
-
-        .peer-card {
-            background-color: var(--background-color);
-            padding: 16px;
-            border-radius: 4px;
-        }
-
-        h1, h2 {
-            margin-top: 0;
-        }
-
-        a {
-            color: inherit;
-            text-decoration: none;
-            margin-bottom: 16px;
-            display: inline-block;
-        }
-
-        a:hover {
-            text-decoration: underline;
-        }
-
-        .stats {
-            font-size: 14px;
-            margin: 8px 0;
-        }
-
-        .header {
-            margin-bottom: 24px;
-            text-align: center;
-        }
-
-        @media (max-width: 600px) {
-            .header img {
-                height: 50px !important;
-            }
-        }
-    </style>
-    <script>
-        function updateData() {
-            fetch('/api/node-status')
-                .then(response => response.json())
-                .then(data => {
-                    // Update the hostname
-                    document.querySelector('h1').textContent = data.hostname;
-                    
-                    // Update node status
-                    const nodeGrid = document.querySelector('.node-grid');
-                    nodeGrid.innerHTML = '';  // Clear current nodes
-                    
-                    Object.entries(data.node_status).forEach(([mac, node]) => {
-                        nodeGrid.innerHTML += `
-                            <div class="node-card">
-                                <h3>${node.hostname}</h3>
-                                <div class="stats">${mac}</div>
-                                <div class="stats">IP: ${node.ip}</div>
-                                <div class="stats">Mode: <span class="mode-${node.mode.toLowerCase()}">${node.mode}</span></div>
-                                <div class="stats">Last Seen: ${node.last_seen.toFixed(2)}s</div>
-                                <div class="stats">Throughput: ${node.throughput.toFixed(1)}</div>
-                                <div class="stats">Next Hop: ${node.nexthop}</div>
-                                <div class="stats">Failure Count: ${node.failure_count}</div>
-                                <div class="stats">Good Count: ${node.good_count}</div>
-                            </div>
-                        `;
-                    });
-                    
-                    // Update peer list
-                    const peerList = document.querySelector('.peer-list');
-                    peerList.innerHTML = '';  // Clear current peers
-                    
-                    Object.entries(data.peer_discovery).forEach(([name, peer]) => {
-                        const secondsAgo = Math.floor(peer.current_time - peer.last_seen);
-                        peerList.innerHTML += `
-                            <div class="peer-card">
-                                <h3>${name}</h3>
-                                <div class="stats">Destination Hash: ${peer.destination_hash}</div>
-                                <div class="stats">Last Seen: ${secondsAgo} seconds ago</div>
-                            </div>
-                        `;
-                    });
-                    
-                    // Schedule next update
-                    setTimeout(updateData, 2000); // Refresh every 2 seconds (faster than before)
-                })
-                .catch(error => {
-                    console.error('Update failed:', error);
-                    setTimeout(updateData, 2000); // Try again
-                });
-        }
-        
-        // Start the update cycle when page loads
-        document.addEventListener('DOMContentLoaded', updateData);
-    </script>
+  <meta charset="utf-8">
+  <title>OrbisMesh – Batman‑adv: Monitoring & Konfiguration</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <style>
+    .cards{ display:grid; gap:12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); }
+    .card{ background:var(--bg-3); border-radius:12px; padding:14px; border:1px solid var(--border); }
+    .card h3{ margin:0 0 8px }
+    .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+    .btn{ padding:6px 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg); cursor:pointer }
+    .btn.brand{ border-color:var(--border2) }
+    .btn.small{ padding:4px 8px; font-size:.9rem }
+    .muted{ color:var(--muted) }
+    .kbd{ display:inline-block; padding:0 6px; border:1px solid var(--border); border-radius:6px; font-size:.95em }
+    .grid-2{ display:grid; gap:12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); }
+    textarea, input, select{ width:100%; background:var(--bg); border:1px solid var(--border); color:inherit; border-radius:8px; padding:8px; }
+    pre{ white-space:pre-wrap; word-break:break-word; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:8px; min-height:120px }
+    .table{ width:100%; border-collapse:collapse }
+    .table th,.table td{ border-bottom:1px solid var(--border); padding:6px 8px; vertical-align:top }
+    .table th{ text-align:left; color:#ccc; font-weight:600 }
+    .pill{ display:inline-block; padding:1px 6px; border-radius:6px; border:1px solid var(--border); background:var(--bg); font-size:12px }
+    .hr{ height:1px; background:var(--border); margin:10px 0 }
+    .ok{ color:#5bd97e } .err{ color:#ff7a7a }
+    .badge{ display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid var(--border); background:var(--bg); color:var(--muted); font-size:.85rem }
+    .section .desc{ color:#ccc; margin-top:-4px; margin-bottom:6px }
+    .two{ display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center }
+  </style>
 </head>
 <body>
+  {% set active = 'index' %}
+  {% include 'sidebar.html' %}
+
+  <main class="main">
     <div class="header">
-        <div>
-            <img src="{{ url_for('static', filename='NatakMeshsecondary-overlay.png') }}" alt="NatakMesh Logo" style="height: 60px; vertical-align: middle; margin-right: 16px;">
-            <div style="display: inline-block; vertical-align: middle;">
-                <h1 style="margin: 0;">{{ hostname }}</h1>
-            </div>
-        </div>
-    </div>
-    
-    <a href="/packet-logs">View Packet Logs →</a>
-
-    <div class="section">
-        <h2>BATMAN Mesh Status</h2>
-        <div class="node-grid">
-            {% for mac, node in node_status.items() %}
-            <div class="node-card">
-                <h3>{{ node.hostname }}</h3>
-                <div class="stats">{{ mac }}</div>
-                <div class="stats">IP: {{ node.ip }}</div>
-                <div class="stats">Mode: <span class="mode-{{ node.mode.lower() }}">{{ node.mode }}</span></div>
-                <div class="stats">Last Seen: {{ "%.2f"|format(node.last_seen) }}s</div>
-                <div class="stats">Throughput: {{ "%.1f"|format(node.throughput) }}</div>
-                <div class="stats">Next Hop: {{ node.nexthop }}</div>
-                <div class="stats">Failure Count: {{ node.failure_count }}</div>
-                <div class="stats">Good Count: {{ node.good_count }}</div>
-            </div>
-            {% endfor %}
-        </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-start;flex:1;">
+        <h1 style="margin:0;">{{ hostname }}</h1>
+      </div>
+      <div class="row">
+        <button class="btn small" onclick="loadOverview()">Neu laden</button>
+      </div>
     </div>
 
+    <!-- ==== ÜBERSICHT ==== -->
     <div class="section">
-        <h2>Reticulum Peers</h2>
-        <div class="peer-list">
-            {% for name, peer in peer_discovery.items() %}
-            <div class="peer-card">
-                <h3>{{ name }}</h3>
-                <div class="stats">Destination Hash: {{ peer.destination_hash }}</div>
-                <div class="stats">Last Seen: {{ (peer.current_time - peer.last_seen)|int }} seconds ago</div>
-            </div>
-            {% endfor %}
+      <h2>Batman‑adv Monitoring and Configuration (placeholder)</h2>
+      <p class="desc">Kurzüberblick aus deiner bestehenden API (<span class="pill">/api/node-status</span>).</p>
+      <div class="cards">
+        <div class="card">
+          <h3>Nodes</h3>
+          <pre id="overview-nodes">Lade...</pre>
         </div>
+        <div class="card">
+          <h3>Peer Discovery</h3>
+          <pre id="overview-peers">Lade...</pre>
+        </div>
+      </div>
     </div>
+
+    <!-- ==== MONITORING ==== -->
+    <div class="section">
+      <h2>Monitoring (batctl)</h2>
+      <p class="desc">Echtzeit‑Abfragen der wichtigsten Tabellen und Zähler.</p>
+      <div class="cards">
+        <div class="card">
+          <h3>Nachbarn <span class="badge">batctl n</span></h3>
+          <div class="two">
+            <button class="btn small" onclick="runSimple('n','#out-n')">Laden</button>
+          </div>
+          <pre id="out-n"></pre>
+        </div>
+        <div class="card">
+          <h3>Originators <span class="badge">batctl o</span></h3>
+          <button class="btn small" onclick="runSimple('o','#out-o')">Laden</button>
+          <pre id="out-o"></pre>
+        </div>
+        <div class="card">
+          <h3>Gateways <span class="badge">batctl gwl</span></h3>
+          <button class="btn small" onclick="runSimple('gwl','#out-gwl')">Laden</button>
+          <pre id="out-gwl"></pre>
+        </div>
+        <div class="card">
+          <h3>Clients/TT <span class="badge">batctl t / tg</span></h3>
+          <div class="row">
+            <button class="btn small" onclick="runSimple('t','#out-tt')">lokal (t)</button>
+            <button class="btn small" onclick="runSimple('tg','#out-tt')">global (tg)</button>
+          </div>
+          <pre id="out-tt"></pre>
+        </div>
+        <div class="card">
+          <h3>Multicast‑Flags <span class="badge">batctl mcast_flags</span></h3>
+          <button class="btn small" onclick="runSimple('mcast_flags','#out-mcast')">Laden</button>
+          <pre id="out-mcast"></pre>
+        </div>
+        <div class="card">
+          <h3>Statistiken <span class="badge">batctl statistics</span></h3>
+          <button class="btn small" onclick="runSimple('statistics','#out-stats')">Laden</button>
+          <pre id="out-stats"></pre>
+        </div>
+        <div class="card">
+          <h3>Hardifs <span class="badge">batctl hardif</span></h3>
+          <button class="btn small" onclick="runSimple('hardif','#out-hardif')">Laden</button>
+          <pre id="out-hardif"></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==== AKTIONEN ==== -->
+    <div class="section">
+      <h2>Aktionen</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Ping (L2/ICMP)</h3>
+          <div class="row">
+            <input id="ping-target" placeholder="MAC oder IP">
+            <button class="btn" onclick="runTarget('ping','#ping-out','#ping-target')">Start</button>
+          </div>
+          <pre id="ping-out"></pre>
+        </div>
+        <div class="card">
+          <h3>Traceroute</h3>
+          <div class="row">
+            <input id="tr-target" placeholder="MAC oder IP">
+            <button class="btn" onclick="runTarget('traceroute','#tr-out','#tr-target')">Start</button>
+          </div>
+          <pre id="tr-out"></pre>
+        </div>
+        <div class="card">
+          <h3>Bandwidth‑Meter</h3>
+          <div class="row">
+            <input id="bw-target" placeholder="MAC oder IP">
+            <button class="btn" onclick="runTarget('bw','#bw-out','#bw-target')">Start</button>
+          </div>
+          <pre id="bw-out"></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==== KONFIGURATION ==== -->
+    <div class="section">
+      <h2>Konfiguration</h2>
+      <p class="desc">Einstellungen am laufenden Mesh (whitelist‑gesicherte batctl Befehle). <span class="muted">„Aktuelle Werte laden“ versucht die Ausgabe von batctl zu parsen; notfalls wird Rohtext angezeigt.</span></p>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3>Mesh‑Interface (bat0)</h3>
+          <label>Gateway‑Modus
+            <select id="gw_mode">
+              <option value="off">off</option>
+              <option value="client">client</option>
+              <option value="server">server</option>
+            </select>
+          </label>
+          <label>Server‑Bandbreite (nur bei server, z. B. 50000/5000)</label>
+          <input id="gw_bandwidth" placeholder="down/up in kbit/s">
+          <div class="hr"></div>
+          <label>Gateway Selector Class</label>
+          <input id="gw_sel_class" placeholder="z. B. 20">
+          <div class="hr"></div>
+          <label>OGM‑Intervall (ms)</label>
+          <input id="orig_interval" type="number" min="10" step="10">
+          <label>Hop‑Penalty (0–255)</label>
+          <input id="hop_penalty" type="number" min="0" max="255">
+          <label>Routing‑Algorithmus</label>
+          <select id="routing_algo">
+            <option>BATMAN_V</option>
+            <option>BATMAN_IV</option>
+          </select>
+          <div class="hr"></div>
+          <label><input type="checkbox" id="ap_isolation"> AP‑Isolation</label><br>
+          <label><input type="checkbox" id="bridge_loop_avoidance"> Bridge Loop Avoidance</label><br>
+          <label><input type="checkbox" id="distributed_arp_table"> Distributed ARP Table</label><br>
+          <label><input type="checkbox" id="multicast_mode"> Multicast Mode</label><br>
+          <label><input type="checkbox" id="fragmentation"> Fragmentation</label><br>
+          <label><input type="checkbox" id="bonding"> Bonding</label><br>
+          <label><input type="checkbox" id="network_coding"> Network Coding</label>
+          <div class="row" style="margin-top:8px">
+            <button class="btn brand" onclick="applyConfig()">Anwenden</button>
+            <button class="btn" onclick="loadConfig()">Aktuelle Werte laden</button>
+          </div>
+          <div id="cfg-msg" class="muted small" style="margin-top:6px"></div>
+        </div>
+
+        <div class="card">
+          <h3>Hard‑Interfaces</h3>
+          <label>Interface</label>
+          <input id="iface" placeholder="z. B. wlan0 oder eth1">
+          <label>Throughput‑Override (MBit/s, 0=auto)</label>
+          <input id="throughput_override" type="number" min="0" step="1">
+          <label>ELP‑Intervall (ms)</label>
+          <input id="elp_interval" type="number" min="10" step="10">
+          <label>MTU (bat0)</label>
+          <input id="mtu" type="number" min="576" step="1">
+          <div class="row" style="margin-top:8px">
+            <button class="btn brand" onclick="applyHardif()">Hardif anwenden</button>
+          </div>
+          <div id="hardif-msg" class="muted small" style="margin-top:6px"></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    async function runSimple(cmd, outSel){
+      const out = document.querySelector(outSel);
+      out.textContent = "Lade…";
+      const r = await fetch(`/api/batctl/${cmd}`);
+      const j = await r.json().catch(()=>({}));
+      out.textContent = j.output || j.error || "Keine Ausgabe";
+    }
+    async function runTarget(cmd, outSel, inputSel){
+      const out = document.querySelector(outSel);
+      const target = document.querySelector(inputSel).value.trim();
+      if(!target){ out.textContent="Bitte Ziel angeben"; return; }
+      out.textContent = "Läuft…";
+      const r = await fetch(`/api/batctl/run`,{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({cmd, target})
+      });
+      const j = await r.json().catch(()=>({}));
+      out.textContent = j.output || j.error || "Keine Ausgabe";
+    }
+
+    async function loadOverview(){
+      const r = await fetch('/api/node-status');
+      const j = await r.json();
+      document.querySelector('#overview-nodes').textContent = JSON.stringify(j.node_status, null, 2);
+      document.querySelector('#overview-peers').textContent = JSON.stringify(j.peer_discovery, null, 2);
+    }
+
+    async function loadConfig(){
+      const r = await fetch('/api/batctl/config');
+      const j = await r.json();
+      if(j.parsed){
+        const p = j.parsed;
+        setVal('gw_mode', p.gw_mode?.mode || 'off');
+        setVal('gw_bandwidth', p.gw_mode?.bandwidth || '');
+        setVal('gw_sel_class', p.gw_sel_class ?? '');
+        setVal('orig_interval', p.orig_interval ?? '');
+        setVal('hop_penalty', p.hop_penalty ?? '');
+        setVal('routing_algo', p.routing_algo ?? 'BATMAN_V');
+        setChecked('ap_isolation', p.ap_isolation === 1 || p.ap_isolation === '1');
+        setChecked('bridge_loop_avoidance', p.bridge_loop_avoidance === 1 || p.bridge_loop_avoidance === '1');
+        setChecked('distributed_arp_table', p.distributed_arp_table === 1 || p.distributed_arp_table === '1');
+        setChecked('multicast_mode', p.multicast_mode === 1 || p.multicast_mode === '1');
+        setChecked('fragmentation', p.fragmentation === 1 || p.fragmentation === '1');
+        setChecked('bonding', p.bonding === 1 || p.bonding === '1');
+        setChecked('network_coding', p.network_coding === 1 || p.network_coding === '1');
+        msg('#cfg-msg', 'Aktuelle Werte geladen.', true);
+      }else{
+        msg('#cfg-msg', 'Konnte Werte nur als Text laden – siehe Konsole.', false);
+        console.log('Raw config:', j.raw);
+      }
+    }
+    function setVal(id,v){ const el=document.getElementById(id); if(el) el.value=v ?? ''; }
+    function setChecked(id,v){ const el=document.getElementById(id); if(el) el.checked=!!v; }
+    function msg(sel, text, ok){ const el=document.querySelector(sel); el.textContent=text; el.className = ok ? 'ok small' : 'err small'; }
+
+    async function applyConfig(){
+      const payload = {
+        gw_mode: document.getElementById('gw_mode').value,
+        gw_bandwidth: document.getElementById('gw_bandwidth').value.trim(),
+        gw_sel_class: document.getElementById('gw_sel_class').value.trim(),
+        orig_interval: document.getElementById('orig_interval').value.trim(),
+        hop_penalty: document.getElementById('hop_penalty').value.trim(),
+        routing_algo: document.getElementById('routing_algo').value,
+        ap_isolation: document.getElementById('ap_isolation').checked ? 1 : 0,
+        bridge_loop_avoidance: document.getElementById('bridge_loop_avoidance').checked ? 1 : 0,
+        distributed_arp_table: document.getElementById('distributed_arp_table').checked ? 1 : 0,
+        multicast_mode: document.getElementById('multicast_mode').checked ? 1 : 0,
+        fragmentation: document.getElementById('fragmentation').checked ? 1 : 0,
+        bonding: document.getElementById('bonding').checked ? 1 : 0,
+        network_coding: document.getElementById('network_coding').checked ? 1 : 0
+      };
+      const r = await fetch('/api/batctl/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+      const j = await r.json();
+      msg('#cfg-msg', j.success ? 'Konfiguration angewandt.' : (j.error||'Fehler'), !!j.success);
+    }
+
+    async function applyHardif(){
+      const payload = {
+        iface: document.getElementById('iface').value.trim(),
+        throughput_override: document.getElementById('throughput_override').value.trim(),
+        elp_interval: document.getElementById('elp_interval').value.trim(),
+        mtu: document.getElementById('mtu').value.trim()
+      };
+      const r = await fetch('/api/batctl/hardif', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+      const j = await r.json();
+      msg('#hardif-msg', j.success ? 'Hardif‑Änderungen angewandt.' : (j.error||'Fehler'), !!j.success);
+    }
+
+    // initial
+    loadOverview();
+  </script>
 </body>
 </html>
