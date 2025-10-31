@@ -85,21 +85,26 @@ It shows neighbors, link quality, and network health at a glance — and offers 
 >   /home/natak/move_me
 >   ```
 
-### Step 1 — Prepare a Fresh Node
+### Step 1 - Copy the installation folder
+Copy the **`move_me`** folder to the user's home directory.
+The path must be **`/home/natak/move_me`**
+
+### Step 2 — Prepare a Fresh Node
 Run this on a fresh Debian installation (as user `natak`):
 
 ```bash
-sudo bash fresh-node.sh
+cd move_me
+./fresh_node.sh
 ```
 
 This installs the core dependencies and prepares the environment  
 (e.g., `batman-adv`, `alfred`, `dnsmasq`, `hostapd`, and related tools).
 
-### Step 2 — Activate OrbisMesh
+### Step 3 — Activate OrbisMesh
 Enable and start the services:
 
 ```bash
-sudo bash service-activator.sh
+./service_activator.sh
 ```
 
 This will:
