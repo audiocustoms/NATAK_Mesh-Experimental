@@ -94,7 +94,7 @@ Run this on a fresh Debian installation (as user `natak`):
 
 ```bash
 cd move_me
-./fresh_node.sh
+sudo bash fresh_node.sh
 ```
 
 This installs the core dependencies and prepares the environment  
@@ -104,7 +104,7 @@ This installs the core dependencies and prepares the environment
 Enable and start the services:
 
 ```bash
-./service_activator.sh
+sudo bash service_activator.sh
 ```
 
 This will:
