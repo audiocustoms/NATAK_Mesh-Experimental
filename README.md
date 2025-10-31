@@ -8,7 +8,7 @@
 
 ---
 
-## 🛰️ What Is a Self-Healing Mesh Network?
+## What Is a Self-Healing Mesh Network?
 
 A **mesh network** is a web of devices where each node acts as a **sender, receiver, and router**.  
 Unlike traditional networks with a central router, every node finds its own path through the network.
@@ -17,41 +17,41 @@ Unlike traditional networks with a central router, every node finds its own path
 
 ---
 
-## ⚙️ Why It Matters
+## Why It Matters
 
 A self-healing mesh can operate **without Internet or cellular infrastructure**, which makes it ideal for off-grid and emergency scenarios.
 
-### 🧭 For Preppers
+### For Preppers
 - Communication continues when public networks fail  
 - Nodes auto-connect via Wi-Fi or radio links  
 - Great for local coordination and situational awareness
 
-### ⚔️ For LARPers & Reenactors
+### For LARPers & Reenactors
 - Build in-game communication (chat, maps, sensors)  
 - Fully independent of mobile networks  
 - Every participant extends the mesh
 
-### 🛡️ For Civil Defense & Emergency Services
+### For Civil Defense & Emergency Services
 - **Ad-hoc** communication when infrastructure is down  
 - Link vehicles, checkpoints, drones, or command posts  
 - Local, encrypted, and redundant
 
-### 🎖️ For Military & Training
+### For Military & Training
 - **Decentralized** field comms  
 - Redundant paths increase reliability  
 - Less dependence on central relays or satellites
 
 ---
 
-## ⚖️ Advantages & Limitations
+## Advantages & Limitations
 
-| ✅ Advantage | 💬 Description |
+| Advantage | Description |
 | --- | --- |
-| 🔁 **Self-healing** | Traffic automatically routes around failures |
-| 📡 **Decentralized** | No single point of failure |
-| 🔒 **Private & local** | Operates offline; Internet optional |
-| ⚙️ **Flexible** | Works over Wi-Fi, radio, or Ethernet |
-| 💡 **Scalable** | More nodes generally improve resilience |
+| **Self-healing** | Traffic automatically routes around failures |
+| **Decentralized** | No single point of failure |
+| **Private & local** | Operates offline; Internet optional |
+| **Flexible** | Works over Wi-Fi, radio, or Ethernet |
+| **Scalable** | More nodes generally improve resilience |
 
 **Limitations**
 - Bandwidth decreases over many hops  
@@ -61,21 +61,21 @@ A self-healing mesh can operate **without Internet or cellular infrastructure**,
 
 ---
 
-## 🌐 Introducing OrbisMesh
+## Introducing OrbisMesh
 
 **OrbisMesh** is a lightweight local **web UI** that turns raw mesh telemetry into a clear, interactive dashboard.  
 It shows neighbors, link quality, and network health at a glance — and offers simple tools for configuration.
 
-### ✨ Key Features
-- 📊 **Live monitoring:** neighbors, signal strength, link status  
-- ⚙️ **Configuration:** DHCP, bridge, and access point helpers  
-- 🔁 **Autostart & services:** persistent monitoring stack  
-- 💻 **Local-only:** runs fully offline  
-- 🌑 **Modern design:** clean dark UI with green accents
+### Key Features
+- **Live monitoring:** neighbors, signal strength, link status  
+- **Configuration:** DHCP, bridge, and access point helpers  
+- **Autostart & services:** persistent monitoring stack  
+- **Local-only:** runs fully offline  
+- **Modern design:** clean dark UI with green accents
 
 ---
 
-## ⚙️ Installation
+## Installation
 
 > **Requirements**
 > - Debian-based OS (Debian, Ubuntu Server, Raspberry Pi OS, etc.)
@@ -85,7 +85,7 @@ It shows neighbors, link quality, and network health at a glance — and offers 
 >   /home/natak/move_me
 >   ```
 
-### 🧩 Step 1 — Prepare a Fresh Node
+### Step 1 — Prepare a Fresh Node
 Run this on a fresh Debian installation (as user `natak`):
 
 ```bash
@@ -95,7 +95,7 @@ sudo bash fresh-node.sh
 This installs the core dependencies and prepares the environment  
 (e.g., `batman-adv`, `alfred`, `dnsmasq`, `hostapd`, and related tools).
 
-### 🚀 Step 2 — Activate OrbisMesh
+### Step 2 — Activate OrbisMesh
 Enable and start the services:
 
 ```bash
@@ -117,23 +117,20 @@ http://<your-node-ip>:5000
 
 ---
 
-## 🧭 Philosophy
+## Philosophy
 
 Self-healing mesh is **digital resilience**.  
 OrbisMesh makes that resilience **visible, controllable, and trustworthy** — off-grid, in the field, or in training.
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions and ideas are welcome!  
 Open an issue, start a discussion, or submit a pull request.
 
 ---
 
-## 📜 License
-
-Licensed under the [MIT License](LICENSE).
 
 <p align="center">
   <sub>Made with 💚 by the OrbisMesh community — empowering resilient communication.</sub>
