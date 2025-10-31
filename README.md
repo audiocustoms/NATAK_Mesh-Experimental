@@ -114,15 +114,6 @@ Afterwards, open:
 http://<your-node-ip>:5000
 ```
 
----
-
-## 🖼️ Screenshots
-
-| Overview | Node Detail |
-| --- | --- |
-| ![Overview](docs/screenshots/overview.png) | ![Node Detail](docs/screenshots/node-detail.png) |
-
-*(Replace the paths above with your actual screenshots.)*
 
 ---
 
