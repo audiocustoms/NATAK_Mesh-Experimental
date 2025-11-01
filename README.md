@@ -85,26 +85,42 @@ It shows neighbors, link quality, and network health at a glance — and offers 
 >   /home/natak/move_me
 >   ```
 
-### Step 1 - Copy the installation folder
-Copy the **`move_me`** folder to the user's home directory.
-The path must be **`/home/natak/move_me`**
+### Step 1 - Download the code
+[Download](https://github.com/audiocustoms/NATAK_Mesh-Experimental/archive/refs/heads/main.zip) the Project as a Zip file. </br>
+Do not unpack the Zip on your PC, this might change the file permissions!
 
-### Step 2 — Prepare a Fresh Node
-Run this on a fresh Debian installation (as user `natak`):
+### Step 2 - Upload
+Upload the Zip-File to a destination of your choice on your device. A recommended location would be `/tmp`.
 
-```bash
-cd move_me
-sudo bash fresh_node.sh
+### Step 3 - Unpack
+Navigate you your Zip-File location and unzip it
+```
+unzip <file_name>.zip
+```
+### Step 4 - Move the folder
+Move the folder with the installation files to it's required destination.
+```
+cd <new_folder_after_unzip>
+mv /move_me /home/natak
+```
+The path to the installation files must be **`/home/natak/move_me`**
+
+### Step 5 — Prepare a Fresh Node
+Navigate to the **`/home/natak/move_me`** folder.</br>
+Run the instrallation script (as user `natak`):
+
+```
+bash fresh_node.sh
 ```
 
 This installs the core dependencies and prepares the environment  
 (e.g., `batman-adv`, `alfred`, `dnsmasq`, `hostapd`, and related tools).
 
-### Step 3 — Activate OrbisMesh
+### Step 6 — Activate OrbisMesh
 Enable and start the services:
 
-```bash
-sudo bash service_activator.sh
+```
+bash service_activator.sh
 ```
 
 This will:
@@ -113,12 +129,12 @@ This will:
 - Enable DHCP/bridge/ALFRED helpers  
 - Launch the OrbisMesh web UI
 
-Afterwards, open:
+After a reboot (takes about 30-35sec), open:
 
 ```
 http://<your-node-ip>:5000
 ```
-
+for detailed configuration.
 
 ---
 
