@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# POST FRESH NODE SETUP (NatakMesh)
-# Muss nach einem Reboot ausgeführt werden.
+# POST FRESH NODE SETUP (OrbiskMesh)
+# Must be executed after fresh_node.sh
 # ==============================================================================
 
 set -Eeuo pipefail
